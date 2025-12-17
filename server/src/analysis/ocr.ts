@@ -1,0 +1,146 @@
+import { GoogleGenAI } from "@google/genai";
+
+export type OcrProvider =
+  | { kind: 'none' }
+  | { kind: 'google_vision'; apiKey: string }
+  | { kind: 'gemini' };
+
+export type OcrRequest = {
+  pngBytes: Buffer;
+  pageIndex1Based: number | null;
+};
+
+export type OcrResult =
+  | { ok: true; text: string; provider: OcrProvider['kind']; confidence: number | null }
+  | { ok: false; provider: OcrProvider['kind']; reason: 'not_configured' | 'provider_error' | 'rate_limited'; details: string };
+
+export function getOcrProviderFromEnv(env: NodeJS.ProcessEnv): OcrProvider {
+  // Check for Gemini AI Integrations first (preferred)
+  if (env.AI_INTEGRATIONS_GEMINI_API_KEY && env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
+    return { kind: 'gemini' };
+  }
+  
+  // Fallback to Google Vision if configured
+  const prov = env.OCR_PROVIDER;
+  if (typeof prov === 'string' && prov.trim().toLowerCase() === 'google_vision') {
+    const key = env.GOOGLE_VISION_API_KEY;
+    if (typeof key === 'string' && key.trim().length > 0) {
+      return { kind: 'google_vision', apiKey: key.trim() };
+    }
+  }
+  
+  return { kind: 'none' };
+}
+
+export async function ocrPngPage(req: OcrRequest, provider: OcrProvider): Promise<OcrResult> {
+  if (provider.kind === 'none') {
+    return { ok: false, provider: 'none', reason: 'not_configured', details: 'OCR not configured.' };
+  }
+  
+  if (provider.kind === 'gemini') {
+    return ocrWithGemini(req);
+  }
+  
+  // Google Vision API fallback
+  const url = `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(provider.apiKey)}`;
+  const body = {
+    requests: [
+      { image: { content: req.pngBytes.toString('base64') }, features: [{ type: 'TEXT_DETECTION' }] },
+    ],
+  };
+
+  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const text = await res.text();
+
+  if (res.status === 429) return { ok: false, provider: 'google_vision', reason: 'rate_limited', details: 'Rate limited.' };
+  if (!res.ok) return { ok: false, provider: 'google_vision', reason: 'provider_error', details: `HTTP ${res.status}: ${text.slice(0, 300)}` };
+
+  const parsed = safeJsonParse(text);
+  const extracted = extractGoogleVisionText(parsed);
+  if (!extracted) return { ok: false, provider: 'google_vision', reason: 'provider_error', details: 'No OCR text returned.' };
+
+  return { ok: true, provider: 'google_vision', text: extracted, confidence: null };
+}
+
+async function ocrWithGemini(req: OcrRequest): Promise<OcrResult> {
+  try {
+    const ai = new GoogleGenAI({
+      apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+      httpOptions: {
+        apiVersion: "",
+        baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+      },
+    });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { 
+            text: `Extract ALL text from this document image. This is a legal document that may contain:
+- Case numbers and court information
+- Defendant names and personal information  
+- Criminal charges and code violations (Utah Code like 76-5-102, West Valley City Code)
+- Criminal history records with dates and offenses
+- Officer narratives and evidence descriptions
+
+Return ONLY the extracted text, preserving the original formatting and structure as much as possible. Include ALL text visible in the image.` 
+          },
+          { 
+            inlineData: { 
+              mimeType: 'image/png', 
+              data: req.pngBytes.toString('base64') 
+            } 
+          }
+        ]
+      }]
+    });
+
+    const text = response.text || '';
+    if (!text || text.trim().length === 0) {
+      return { ok: false, provider: 'gemini', reason: 'provider_error', details: 'No text extracted from image.' };
+    }
+
+    return { ok: true, provider: 'gemini', text: text.trim(), confidence: null };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    if (msg.includes('429') || msg.toLowerCase().includes('rate limit')) {
+      return { ok: false, provider: 'gemini', reason: 'rate_limited', details: msg };
+    }
+    return { ok: false, provider: 'gemini', reason: 'provider_error', details: msg };
+  }
+}
+
+function safeJsonParse(text: string): unknown | null {
+  try {
+    const u: unknown = JSON.parse(text);
+    return u;
+  } catch {
+    return null;
+  }
+}
+
+function extractGoogleVisionText(json: unknown): string | null {
+  if (typeof json !== 'object' || json === null) return null;
+  const root = json as Record<string, unknown>;
+  const responses = root.responses;
+  if (!Array.isArray(responses) || responses.length < 1) return null;
+  const r0 = responses[0];
+  if (typeof r0 !== 'object' || r0 === null) return null;
+  const rec = r0 as Record<string, unknown>;
+  const fta = rec.fullTextAnnotation;
+  if (typeof fta === 'object' && fta !== null) {
+    const t = (fta as Record<string, unknown>).text;
+    if (typeof t === 'string' && t.trim().length > 0) return t.trim();
+  }
+  const ta = rec.textAnnotations;
+  if (Array.isArray(ta) && ta.length > 0) {
+    const a0 = ta[0];
+    if (typeof a0 === 'object' && a0 !== null) {
+      const d = (a0 as Record<string, unknown>).description;
+      if (typeof d === 'string' && d.trim().length > 0) return d.trim();
+    }
+  }
+  return null;
+}

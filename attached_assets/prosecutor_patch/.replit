@@ -1,0 +1,23 @@
+modules = ["nodejs-20", "web", "postgresql-16"]
+
+# Use production-style server start so Replit sees an open HTTP port reliably.
+run = "npm start"
+
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
+
+[nix]
+channel = "stable-24_05"
+packages = ["unzip", "chromium", "glib", "nspr", "nss", "at-spi2-atk", "cups", "libdrm", "libxkbcommon", "mesa", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "xorg.libxcb", "alsa-lib", "pango", "cairo"]
+
+[env]
+PORT = "5000"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[deployment]
+deploymentTarget = "autoscale"
+build = ["npm", "run", "build"]
+publicDir = "dist/public"
+run = ["npm", "start"]

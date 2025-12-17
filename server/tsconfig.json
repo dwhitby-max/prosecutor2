@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "rootDir": "..",
+    "outDir": "dist",
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "./node_modules/@types"
+    ]
+  },
+  "include": [
+    "./**/*.ts",
+    "../shared/**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "../node_modules",
+    "../vite.config.ts",
+    "../client/**/*"
+  ]
+}

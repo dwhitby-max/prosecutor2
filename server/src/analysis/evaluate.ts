@@ -1,0 +1,259 @@
+import { extractPdfImages, extractPdfText, isScannedDocument } from './pdf.js';
+import { detectCitations } from './citations.js';
+import { getOcrProviderFromEnv } from './ocr.js';
+import { lookupUtahCode, lookupWvcCode } from './statutes.js';
+import { parseUtahCriminalHistory } from './priors.js';
+import { getDb } from '../storage/db.js';
+import { id } from '../storage/ids.js';
+import { GoogleGenAI } from "@google/genai";
+
+export type RunAnalysisArgs = {
+  persist: boolean;
+  pdfBuffers: Buffer[];
+};
+
+export type ElementsResult = {
+  overall: 'met' | 'unclear';
+  elements: Array<{ element: string; status: 'met' | 'unclear'; evidenceSnippets: string[] }>;
+  notes: string[];
+};
+
+// OCR entire PDF using Gemini (for scanned documents)
+async function ocrPdfWithGemini(pdfBytes: Buffer): Promise<string> {
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  
+  if (!apiKey || !baseUrl) {
+    console.log('Gemini not configured for OCR');
+    return '';
+  }
+  
+  // Check PDF size - Gemini has 8MB limit for inline data
+  const pdfSizeMB = pdfBytes.length / (1024 * 1024);
+  console.log(`PDF size: ${pdfSizeMB.toFixed(2)} MB`);
+  
+  if (pdfSizeMB > 7) {
+    console.log('PDF too large for Gemini inline processing, skipping OCR');
+    return '';
+  }
+  
+  try {
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        apiVersion: "",
+        baseUrl,
+      },
+    });
+
+    console.log('Running Gemini OCR on scanned PDF...');
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { 
+            text: `Extract ALL text from this legal document PDF. Focus on:
+- Case number (format: "Case #: XXXX-XXXXX" or "Case XXXX-XXXXX") - IMPORTANT: Extract this from the first page header
+- Defendant name (format: "Last, First" or "First Last")
+- Criminal charges and code citations (Utah Code XX-X-XXX, West Valley City Code)
+- Criminal history sections with prior arrests/convictions
+- Officer narratives
+- "Booked Into Jail: Yes/No" field
+
+Return ONLY the extracted text, preserving the case number and defendant name exactly as they appear.` 
+          },
+          { 
+            inlineData: { 
+              mimeType: 'application/pdf', 
+              data: pdfBytes.toString('base64') 
+            } 
+          }
+        ]
+      }]
+    });
+
+    const text = response.text || '';
+    console.log(`Gemini OCR extracted ${text.length} characters`);
+    return text;
+  } catch (error) {
+    console.error('Gemini OCR error:', error instanceof Error ? error.message : String(error));
+    return '';
+  }
+}
+
+export async function runAnalysis(args: RunAnalysisArgs): Promise<unknown> {
+  const provider = getOcrProviderFromEnv(process.env);
+  let mergedText = '';
+  const docSummaries: Array<{ pageCount: number | null; textLength: number; imageCount: number; ocrUsed: boolean }> = [];
+
+  for (const pdfBytes of args.pdfBuffers) {
+    const t = await extractPdfText(pdfBytes);
+    const imgs = await extractPdfImages(pdfBytes);
+    
+    let ocrText = '';
+    let ocrUsed = false;
+    
+    // Check if text extraction produced garbage (scanned document)
+    if (isScannedDocument(t.text) && provider.kind !== 'none') {
+      console.log('Detected scanned document, running OCR...');
+      ocrText = await ocrPdfWithGemini(pdfBytes);
+      ocrUsed = ocrText.length > 0;
+    }
+
+    // Use OCR text if available, otherwise use extracted text
+    const finalText = ocrUsed ? ocrText : t.text;
+    mergedText += `\n\n[DOC]\n${finalText}\n`;
+    docSummaries.push({ 
+      pageCount: t.pageCount, 
+      textLength: finalText.length, 
+      imageCount: imgs.images.length,
+      ocrUsed 
+    });
+  }
+
+  const citations = detectCitations(mergedText);
+  const narrative = extractOfficerNarrative(mergedText);
+
+  const statutes: unknown[] = [];
+  const elements: unknown[] = [];
+
+  for (const c of citations) {
+    if (c.jurisdiction === 'UT') {
+      const st = await cachedStatute('UT', c.normalizedKey, () => lookupUtahCode(c.normalizedKey));
+      if (st) {
+        statutes.push(st);
+        elements.push({ jurisdiction: 'UT', code: c.normalizedKey, result: evaluateElements(narrative, st.text) });
+      }
+    } else if (c.jurisdiction === 'WVC') {
+      const st = await cachedStatute('WVC', c.normalizedKey, () => lookupWvcCode(c.normalizedKey));
+      if (st) {
+        statutes.push(st);
+        elements.push({ jurisdiction: 'WVC', code: c.normalizedKey, result: evaluateElements(narrative, st.text) });
+      }
+    }
+  }
+
+  const priors = parseUtahCriminalHistory(mergedText);
+
+  return {
+    documents: docSummaries,
+    citations,
+    narrative,
+    fullText: mergedText,
+    statutes,
+    elements,
+    priors,
+  };
+}
+
+function extractOfficerNarrative(text: string): string {
+  const patterns: RegExp[] = [
+    /OFFICER(?:'S)?\s+NARRATIVE[\s\S]{0,80}\n([\s\S]{200,12000})/i,
+    /PROBABLE\s+CAUSE[\s\S]{0,80}\n([\s\S]{200,12000})/i,
+    /NARRATIVE[\s\S]{0,80}\n([\s\S]{200,12000})/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m && typeof m[1] === 'string') return m[1].trim();
+  }
+  return text.slice(0, 12000).trim();
+}
+
+function evaluateElements(narrative: string, statuteText: string): ElementsResult {
+  const elements = buildElementsFromStatuteText(statuteText);
+  const checks = elements.map((el) => {
+    const keys = keywordize(el);
+    const evidence = findEvidence(narrative, keys);
+    const status: 'met' | 'unclear' = keys.length >= 2 && evidence.length > 0 ? 'met' : 'unclear';
+    return { element: el, status, evidenceSnippets: evidence };
+  });
+  const metCount = checks.filter((c) => c.status === 'met').length;
+  const overall: 'met' | 'unclear' = metCount >= Math.max(1, Math.floor(checks.length * 0.6)) ? 'met' : 'unclear';
+  return { overall, elements: checks, notes: ['Screening-only: based on narrative keyword evidence vs statute text.'] };
+}
+
+function buildElementsFromStatuteText(text: string): string[] {
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter((l) => l.length >= 15 && l.length <= 500);
+  const triggers = ['commits', 'is guilty', 'shall', 'may not', 'unlawful', 'a person', 'must'];
+  const out: string[] = [];
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (triggers.some((t) => lower.includes(t))) out.push(line);
+    if (out.length >= 12) break;
+  }
+  return out.length > 0 ? out : lines.slice(0, 8);
+}
+
+function keywordize(s: string): string[] {
+  const stop = new Set(['the','and','or','of','to','in','on','for','with','without','by','from','is','are','was','were','shall','may','must','not','person','a','an']);
+  const words = s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).map((w) => w.trim()).filter((w) => w.length >= 4 && !stop.has(w));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const w of words) {
+    if (seen.has(w)) continue;
+    seen.add(w);
+    out.push(w);
+  }
+  return out.slice(0, 8);
+}
+
+function findEvidence(narrative: string, keywords: string[]): string[] {
+  const lower = narrative.toLowerCase();
+  const hits = keywords.filter((k) => lower.includes(k));
+  const snippets: string[] = [];
+  for (const k of hits.slice(0, 3)) {
+    const idx = lower.indexOf(k);
+    if (idx < 0) continue;
+    const start = Math.max(0, idx - 80);
+    const end = Math.min(narrative.length, idx + 140);
+    snippets.push(narrative.slice(start, end).trim());
+  }
+  return snippets;
+}
+
+type CachedStatute = { jurisdiction: 'UT' | 'WVC'; code: string; title: string | null; text: string; url: string; fetchedAtIso: string };
+
+async function cachedStatute(
+  jurisdiction: 'UT' | 'WVC',
+  code: string,
+  fetcher: () => Promise<{ ok: true; title: string | null; text: string; url: string; fetchedAtIso: string } | { ok: false }>,
+): Promise<CachedStatute | null> {
+  // Try cache first, but don't fail if SQLite is unavailable
+  try {
+    const db = getDb();
+    const row: unknown = db.prepare('SELECT content_json as contentJson FROM code_cache WHERE jurisdiction = ? AND normalized_key = ?').get(jurisdiction, code);
+    if (typeof row === 'object' && row !== null && 'contentJson' in row) {
+      const cj = (row as Record<string, unknown>).contentJson;
+      if (typeof cj === 'string' && cj.length > 0) {
+        try {
+          const parsed: unknown = JSON.parse(cj);
+          if (typeof parsed === 'object' && parsed !== null) {
+            const rec = parsed as Record<string, unknown>;
+            const text = typeof rec.text === 'string' ? rec.text : null;
+            const url = typeof rec.url === 'string' ? rec.url : null;
+            const title = typeof rec.title === 'string' ? rec.title : null;
+            const fetchedAtIso = typeof rec.fetchedAtIso === 'string' ? rec.fetchedAtIso : null;
+            if (text && url && fetchedAtIso) return { jurisdiction, code, title, text, url, fetchedAtIso };
+          }
+        } catch { /* ignore parse error */ }
+      }
+    }
+  } catch (dbErr) {
+    console.warn('SQLite cache unavailable, fetching directly:', dbErr instanceof Error ? dbErr.message : 'unknown');
+  }
+
+  const res = await fetcher();
+  if (!('ok' in res) || res.ok !== true) return null;
+
+  // Try to cache, but don't fail if SQLite is unavailable
+  try {
+    const db = getDb();
+    const obj = { title: res.title, text: res.text, url: res.url, fetchedAtIso: res.fetchedAtIso };
+    db.prepare('INSERT OR REPLACE INTO code_cache (id, jurisdiction, normalized_key, content_json, fetched_at) VALUES (?, ?, ?, ?, ?)')
+      .run(id(), jurisdiction, code, JSON.stringify(obj), new Date().toISOString());
+  } catch { /* ignore cache write error */ }
+
+  return { jurisdiction, code, title: res.title, text: res.text, url: res.url, fetchedAtIso: res.fetchedAtIso };
+}
