@@ -175,7 +175,7 @@ export function App() {
           <div data-testid="cases-sidebar">
             <h2 data-testid="text-folder-title">{folder === 'active' ? 'Active Cases' : 'Completed Cases'}</h2>
             {folder === 'active' && <UploadCreate onCreated={() => { void loadCases(folder); }} />}
-            {folder === 'completed' && cases.length > 0 && (
+            {cases.length > 0 && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, padding: 8, background: '#f8f9fa', borderRadius: 6 }} data-testid="delete-controls">
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                   <input
@@ -208,15 +208,13 @@ export function App() {
             <div style={{ marginTop: 12 }} data-testid="cases-list">
               {cases.map((c) => (
                 <div key={c.id} data-testid={`card-case-${c.id}`} style={{ padding: 10, border: '1px solid #ddd', borderRadius: 8, marginBottom: 8, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  {folder === 'completed' && (
-                    <input
-                      type="checkbox"
-                      data-testid={`checkbox-case-${c.id}`}
-                      checked={selectedForDelete.has(c.id)}
-                      onChange={() => toggleSelectForDelete(c.id)}
-                      style={{ marginTop: 4 }}
-                    />
-                  )}
+                  <input
+                    type="checkbox"
+                    data-testid={`checkbox-case-${c.id}`}
+                    checked={selectedForDelete.has(c.id)}
+                    onChange={() => toggleSelectForDelete(c.id)}
+                    style={{ marginTop: 4 }}
+                  />
                   <div style={{ flex: 1 }}>
                     <div data-testid={`text-defendant-${c.id}`}><strong>{c.defendantName ?? 'Unknown Defendant'}</strong></div>
                     <div style={{ fontSize: 12, color: '#555' }} data-testid={`text-case-info-${c.id}`}>

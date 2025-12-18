@@ -773,10 +773,24 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
 
       const parsed = parseIdentity(text);
       
+      // Try to extract defendant name from filename if not found in text
+      // Filename format: "Last, First.pdf" or "Last, First3.pdf"
+      let defendantNameFromFile: string | null = null;
+      if (!parsed.defendantName) {
+        const filenameWithoutExt = f.originalname.replace(/\.pdf$/i, '');
+        // Remove trailing numbers (like "White, Dave3" -> "White, Dave")
+        const cleanedName = filenameWithoutExt.replace(/\d+$/, '').trim();
+        // Check if it looks like a name (contains comma for "Last, First" format)
+        if (cleanedName.includes(',') && cleanedName.length > 3) {
+          defendantNameFromFile = cleanedName;
+          console.log(`Extracted defendant name from filename: ${defendantNameFromFile}`);
+        }
+      }
+      
       // Explicitly set all fields to avoid relying on database defaults
       const caseData = {
         caseNumber: parsed.caseNumber || 'Unknown',
-        defendantName: parsed.defendantName || 'Unknown',
+        defendantName: parsed.defendantName || defendantNameFromFile || 'Unknown',
         defendantDOB: null,
         status: 'processing' as const,
         summary: null,
