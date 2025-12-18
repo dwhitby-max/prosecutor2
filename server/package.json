@@ -18,7 +18,8 @@
     "multer": "^2.0.1",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^4.6.82",
-    "pngjs": "^7.0.0"
+    "pngjs": "^7.0.0",
+    "@google-cloud/documentai": "latest"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

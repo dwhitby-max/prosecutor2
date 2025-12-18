@@ -6,6 +6,32 @@ import { parseUtahCriminalHistory } from './priors.js';
 import { getDb } from '../storage/db.js';
 import { id } from '../storage/ids.js';
 import { GoogleGenAI } from "@google/genai";
+import { ocrPdfWithDocumentAI } from "./documentAiOcr";
+
+function looksGarbledPrefix(text: string): boolean {
+  if (!text) return true;
+  const head = text.slice(0, 1200);
+  const cleaned = head.replace(/\u0000/g, "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ");
+  // remove whitespace to measure symbol density even when spaced out
+  const compact = cleaned.replace(/\s+/g, "");
+  if (compact.length < 80) return true;
+
+  const letters = (compact.match(/[A-Za-z]/g) || []).length;
+  const digits = (compact.match(/[0-9]/g) || []).length;
+  const alnum = letters + digits;
+  const symbols = Math.max(0, compact.length - alnum);
+  const symbolRatio = symbols / compact.length;
+
+  // Your junk prefix has very high symbol ratio
+  if (symbolRatio > 0.45) return true;
+
+  // Also catch many punctuation characters overall
+  const punct = (compact.match(/[!"#$%&'()*+,\-./:;<=>?@$begin:math:display$\$end:math:display$\\^_\`{|}~]/g) || []).length;
+  if (punct / compact.length > 0.35) return true;
+
+  return false;
+}
+
 
 export type RunAnalysisArgs = {
   persist: boolean;
@@ -85,6 +111,7 @@ Return ONLY the extracted text, preserving the case number and defendant name ex
 
 export async function runAnalysis(args: RunAnalysisArgs): Promise<unknown> {
   const provider = getOcrProviderFromEnv(process.env);
+    console.log("DEBUG_OCR_PROVIDER", provider.kind);
   let mergedText = '';
   const docSummaries: Array<{ pageCount: number | null; textLength: number; imageCount: number; ocrUsed: boolean }> = [];
 
@@ -96,15 +123,41 @@ export async function runAnalysis(args: RunAnalysisArgs): Promise<unknown> {
     let ocrUsed = false;
     
     // Check if text extraction produced garbage (scanned document)
-    if (isScannedDocument(t.text) && provider.kind !== 'none') {
+    if ((isScannedDocument(t.text) || looksGarbledPrefix(t.text)) && provider.kind !== 'none') {
       console.log('Detected scanned document, running OCR...');
-      ocrText = await ocrPdfWithGemini(pdfBytes);
+      if (provider.kind === "document_ai") {
+        console.log("DEBUG_OCR_PATH document_ai");
+        ocrText = await ocrPdfWithDocumentAI(pdfBytes);
+      } else {
+        console.log("DEBUG_OCR_PATH gemini");
+        ocrText = await ocrPdfWithGemini(pdfBytes);
+      }
       ocrUsed = ocrText.length > 0;
     }
 
     // Use OCR text if available, otherwise use extracted text
-    const finalText = ocrUsed ? ocrText : t.text;
-    mergedText += `\n\n[DOC]\n${finalText}\n`;
+    const sanitizeText = (s: string) =>
+      (s || "")
+        .replace(/\u0000/g, "")
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+// Prefer OCR text whenever extraction is garbled AND OCR produced something usable
+const extracted = sanitizeText(t.text);
+const ocrClean = sanitizeText(ocrText);
+
+let finalText = extracted;
+if ((isScannedDocument(t.text) || looksGarbledPrefix(t.text)) && ocrClean.length > 200) {
+  finalText = ocrClean;
+  console.log("✅ Using OCR text (Document AI/Gemini) because extracted text was garbled.");
+} else if (ocrClean.length > 200 && extracted.length < 200) {
+  finalText = ocrClean;
+  console.log("✅ Using OCR text (extracted text too short).");
+} else {
+  console.log("ℹ️ Using extracted text (OCR not needed or not available).");
+}
+    mergedText += `\n\n${finalText}\n`;
     docSummaries.push({ 
       pageCount: t.pageCount, 
       textLength: finalText.length, 

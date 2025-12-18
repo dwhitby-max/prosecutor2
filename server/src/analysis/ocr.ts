@@ -3,8 +3,8 @@ import { GoogleGenAI } from "@google/genai";
 export type OcrProvider =
   | { kind: 'none' }
   | { kind: 'google_vision'; apiKey: string }
-  | { kind: 'gemini' };
-
+  | { kind: 'gemini' }
+  | { kind: 'document_ai' };
 export type OcrRequest = {
   pngBytes: Buffer;
   pageIndex1Based: number | null;
@@ -15,20 +15,28 @@ export type OcrResult =
   | { ok: false; provider: OcrProvider['kind']; reason: 'not_configured' | 'provider_error' | 'rate_limited'; details: string };
 
 export function getOcrProviderFromEnv(env: NodeJS.ProcessEnv): OcrProvider {
-  // Check for Gemini AI Integrations first (preferred)
+  const prov = (env.OCR_PROVIDER || '').trim().toLowerCase();
+
+  // Document AI OCR
+  if (prov === 'document_ai') {
+    if (env.DOCUMENT_AI_PROJECT_ID && env.DOCUMENT_AI_LOCATION && env.DOCUMENT_AI_PROCESSOR_ID && env.DOCUMENT_AI_SERVICE_ACCOUNT_JSON) {
+      return { kind: 'document_ai' };
+    }
+  }
+
+  // Gemini (used in this project for OCR fallback / reasoning if configured)
   if (env.AI_INTEGRATIONS_GEMINI_API_KEY && env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
     return { kind: 'gemini' };
   }
-  
-  // Fallback to Google Vision if configured
-  const prov = env.OCR_PROVIDER;
-  if (typeof prov === 'string' && prov.trim().toLowerCase() === 'google_vision') {
+
+  // Google Vision OCR
+  if (prov === 'google_vision') {
     const key = env.GOOGLE_VISION_API_KEY;
     if (typeof key === 'string' && key.trim().length > 0) {
       return { kind: 'google_vision', apiKey: key.trim() };
     }
   }
-  
+
   return { kind: 'none' };
 }
 
@@ -42,7 +50,7 @@ export async function ocrPngPage(req: OcrRequest, provider: OcrProvider): Promis
   }
   
   // Google Vision API fallback
-  const url = `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(provider.apiKey)}`;
+  const url = `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(provider.kind === 'google_vision' ? provider.apiKey : '')}`;
   const body = {
     requests: [
       { image: { content: req.pngBytes.toString('base64') }, features: [{ type: 'TEXT_DETECTION' }] },

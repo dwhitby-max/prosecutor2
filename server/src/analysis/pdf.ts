@@ -1,5 +1,8 @@
 import { PDFParse } from 'pdf-parse';
 import { PNG } from 'pngjs';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
 
 export type PdfTextResult = { text: string; pageCount: number | null };
 
@@ -27,10 +30,43 @@ export type ExtractedImage = {
 
 export type PdfImagesResult = { images: ExtractedImage[] };
 
-export async function extractPdfImages(_pdfBytes: Buffer): Promise<PdfImagesResult> {
-  // Image extraction disabled - pdfjs-dist requires Node.js 22+ for Promise.withResolvers
-  // Text extraction via pdf-parse is sufficient for analysis
-  return { images: [] };
+export async function extractPdfImages(pdfBytes: Buffer): Promise<PdfImagesResult> {
+  // Best-effort embedded image extraction using Poppler's pdfimages.
+  // If pdfimages is unavailable, returns { images: [] } without crashing.
+  const tmpRoot = path.join(process.cwd(), "uploads", "tmp");
+  fs.mkdirSync(tmpRoot, { recursive: true });
+
+  const tmpPdf = path.join(tmpRoot, `imgsrc-${Date.now()}-${Math.random().toString(16).slice(2)}.pdf`);
+  const outDir = path.join(tmpRoot, `imgs-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  fs.mkdirSync(outDir, { recursive: true });
+
+  try {
+    fs.writeFileSync(tmpPdf, pdfBytes);
+    execSync(`pdfimages -all "${tmpPdf}" "${path.join(outDir, "img")}"`, { stdio: "ignore" });
+
+    const files = fs.readdirSync(outDir).filter(f => /\.(png|jpe?g|ppm|pbm|pgm)$/i.test(f));
+    const images: ExtractedImage[] = [];
+    let idx = 0;
+
+    for (const f of files) {
+      const fp = path.join(outDir, f);
+      const bytes = fs.readFileSync(fp);
+      const lower = f.toLowerCase();
+      const mimeType =
+        lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+          ? ("image/jpeg" as const)
+          : ("image/png" as const);
+
+      images.push({ index: idx++, page: null, mimeType, bytes });
+    }
+
+    return { images };
+  } catch {
+    return { images: [] };
+  } finally {
+    try { fs.rmSync(outDir, { recursive: true, force: true }); } catch {}
+    try { fs.rmSync(tmpPdf, { force: true }); } catch {}
+  }
 }
 
 // Convert PDF bytes to PNG images of each page using pdf2pic alternative
@@ -63,20 +99,30 @@ export async function convertPdfToImages(pdfBytes: Buffer, maxPages: number = 10
 
 // Check if extracted text appears to be from a scanned document
 export function isScannedDocument(text: string): boolean {
-  if (!text || text.length < 100) return true;
-  
-  // Check for null bytes and control characters (definite sign of binary garbage)
-  const hasNullBytes = text.includes('\x00') || text.includes('\u0000');
-  if (hasNullBytes) return true;
-  
-  // Count control characters
-  const controlChars = (text.match(/[\x00-\x1F]/g) || []).length;
-  if (controlChars > text.length * 0.05) return true; // More than 5% control chars
-  
-  // Check ratio of readable characters (letters, numbers, common punctuation)
-  const readableChars = text.replace(/[^a-zA-Z0-9\s.,!?;:'"()\-\/]/g, '').length;
-  const ratio = readableChars / text.length;
-  
-  // If less than 40% readable, likely scanned/garbled
-  return ratio < 0.4;
+  if (!text || text.trim().length < 120) return true;
+
+  // Common broken font extraction marker
+  if (/\(cid:\d+\)/i.test(text)) return true;
+
+  // Strip control chars for evaluation
+  const cleaned = text
+    .replace(/\u0000/g, "")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ")
+    .trim();
+
+  if (cleaned.length < 120) return true;
+
+  // Long runs of punctuation/symbols (matches your output)
+  if (/[!"#$%&'()*+,\-./0-9:;<=>?@$begin:math:display$\$end:math:display$\\^_\`{|}~]{18,}/.test(cleaned)) return true;
+
+  const letters = (cleaned.match(/[A-Za-z]/g) || []).length;
+  const spaces = (cleaned.match(/\s/g) || []).length;
+  const symbols = Math.max(0, cleaned.length - letters - spaces);
+
+  const letterRatio = letters / cleaned.length;
+  const symbolRatio = symbols / cleaned.length;
+
+  if (symbolRatio > 0.33 && letterRatio < 0.22) return true;
+
+  return false;
 }
