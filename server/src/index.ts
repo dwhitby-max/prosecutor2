@@ -294,7 +294,7 @@ function parseIdentityFromText(text: string): { caseNumber: string | null; defen
 }
 
 // Extract charges from Patrol Screening Sheet - only current case charges, not criminal history
-// Uses LINE-BY-LINE parsing starting from "Offense Information" to avoid regex lookahead issues
+// Handles OCR that merges example header and real charges onto same line
 function extractChargesFromScreeningSheet(text: string): Array<{ code: string; chargeName: string; chargeClass: string | null }> {
   const charges: Array<{ code: string; chargeName: string; chargeClass: string | null }> = [];
   const seenCodes = new Set<string>();
@@ -303,9 +303,11 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
   const ocrCorrections: Record<string, string> = {
     '57-37A': '58-37A',  // OCR often misreads 58 as 57 for drug paraphernalia statute
     '57-37a': '58-37A',
+    '57-37A-5': '58-37A-5',
+    '57-37a-5': '58-37A-5',
   };
   
-  // Map of known charge codes to their names for fallback
+  // Map of known charge codes to their names
   const knownCharges: Record<string, string> = {
     '58-37-8': 'Possession of Controlled Substance',
     '58-37A-5': 'Possession of Drug Paraphernalia',
@@ -323,6 +325,14 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
     '41-6a-501': 'Driving Under Influence',
   };
   
+  // Common charge abbreviations from screening sheets
+  const chargeAbbreviations: Record<string, string> = {
+    'POCS': 'Possession of Controlled Substance',
+    'PODP': 'Possession of Drug Paraphernalia',
+    'DUI': 'Driving Under Influence',
+    'DV': 'Domestic Violence',
+  };
+  
   // Class abbreviation mapping
   const classMap: Record<string, string> = {
     'MA': 'Misdemeanor A',
@@ -332,22 +342,6 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
     'F2': '2nd Degree Felony',
     'F3': '3rd Degree Felony',
   };
-  
-  // Section headers that indicate we've left the Offense Information section
-  const sectionTerminators = [
-    /^\s*Criminal\s+History/i,
-    /^\s*BCI\s/i,
-    /^\s*NCIC\s/i,
-    /^\s*Prior\s+(arrests|record)/i,
-    /^\s*Convictions/i,
-    /^\s*UTAH\s+RECORDS/i,
-    /^\s*Driver\s+license/i,
-    /^\s*Arresting\s+Officer/i,
-    /^\s*Victim\s+Information/i,
-    /^\s*Witnesses/i,
-    /^\s*Narrative/i,
-    /^\s*Synopsis/i,
-  ];
   
   // Find the start of "Offense Information" section
   const offenseInfoMatch = text.match(/Offense\s+Information/i);
@@ -359,97 +353,102 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
   const startIndex = offenseInfoMatch.index! + offenseInfoMatch[0].length;
   console.log('Found "Offense Information" at index', offenseInfoMatch.index, '- starting scan from', startIndex);
   
-  // Get all text after "Offense Information" and split into lines
-  const afterOffenseInfo = text.slice(startIndex);
-  const lines = afterOffenseInfo.split(/[\n\r]+/);
+  // Get text after "Offense Information" - limit to first 500 chars to stay in charge section
+  let chargeText = text.slice(startIndex, startIndex + 500);
   
-  console.log('=== OFFENSE INFO LINES (first 10) ===');
-  lines.slice(0, 10).forEach((line, i) => console.log(`Line ${i}: ${line.slice(0, 80)}`));
-  console.log('=== END OFFENSE INFO ===');
+  // Find where the next section starts (Criminal History, Narrative, etc.)
+  const sectionBoundaries = [
+    /Criminal\s+History/i,
+    /\bBCI\b/i,
+    /\bNCIC\b/i,
+    /Prior\s+(arrests|record)/i,
+    /Narrative/i,
+    /Synopsis/i,
+    /Arresting\s+Officer/i,
+    /Victim\s+Information/i,
+  ];
   
-  let skippedFirstLine = false;
-  
-  for (const line of lines) {
-    const lineLower = line.toLowerCase().trim();
-    const lineTrimmed = line.trim();
-    
-    // Check if we've hit a section terminator - stop processing
-    if (sectionTerminators.some(pattern => pattern.test(lineTrimmed))) {
-      console.log('Hit section terminator, stopping:', lineTrimmed.slice(0, 40));
+  for (const boundary of sectionBoundaries) {
+    const boundaryMatch = chargeText.match(boundary);
+    if (boundaryMatch && boundaryMatch.index) {
+      chargeText = chargeText.slice(0, boundaryMatch.index);
+      console.log('Trimmed charge text at boundary:', boundary.source);
       break;
     }
+  }
+  
+  console.log('=== RAW CHARGE TEXT ===');
+  console.log(chargeText);
+  console.log('=== END RAW CHARGE TEXT ===');
+  
+  // The OCR often merges example header and real charges on same line
+  // Pattern: "CODE (example: CHARGE (example: Assault) 76-6-102) 58-37-8 POCS 57-37a-5 PODP"
+  // Strategy: Find ALL codes in the section, skip the FIRST one (the example), process the rest
+  
+  // First, collect all codes with their context
+  const codePattern = /\b(\d{2})-(\d{1,3}[aA]?)-(\d{1,4}(?:\.\d+)?)\b\s*([A-Z]{2,6})?/gi;
+  const allCodes: Array<{ fullMatch: string; title: string; chapter: string; section: string; suffix: string; index: number }> = [];
+  let match;
+  
+  while ((match = codePattern.exec(chargeText)) !== null) {
+    allCodes.push({
+      fullMatch: match[0],
+      title: match[1],
+      chapter: match[2].toUpperCase(),
+      section: match[3],
+      suffix: match[4]?.toUpperCase() || '',
+      index: match.index,
+    });
+  }
+  
+  console.log('Found', allCodes.length, 'codes in charge section:', allCodes.map(c => `${c.title}-${c.chapter}-${c.section}`).join(', '));
+  
+  // If the text contains "example", skip the FIRST code (it's the example code like 76-6-102)
+  const hasExampleText = chargeText.toLowerCase().includes('example');
+  const codesToProcess = hasExampleText && allCodes.length > 1 ? allCodes.slice(1) : allCodes;
+  
+  if (hasExampleText && allCodes.length > 0) {
+    console.log('Skipping example code:', `${allCodes[0].title}-${allCodes[0].chapter}-${allCodes[0].section}`);
+  }
+  
+  // Process the remaining codes as real charges
+  for (const codeInfo of codesToProcess) {
+    let { title, chapter, section, suffix } = codeInfo;
     
-    // Skip empty lines
-    if (lineTrimmed.length < 5) continue;
+    // Build the full code
+    let fullCode = `${title}-${chapter}-${section}`;
     
-    // CRITICAL: Skip the FIRST non-empty line after "Offense Information" - it's always an example header
-    // Example: "CODE (example: 58-37-8) CHARGE (example: Assault)"
-    if (!skippedFirstLine) {
-      console.log('Skipping first line (example header):', lineTrimmed.slice(0, 60));
-      skippedFirstLine = true;
-      continue;
+    // Apply OCR corrections
+    if (ocrCorrections[fullCode]) {
+      console.log(`OCR correction: ${fullCode} -> ${ocrCorrections[fullCode]}`);
+      fullCode = ocrCorrections[fullCode];
+    } else if (ocrCorrections[`${title}-${chapter}`]) {
+      const corrected = ocrCorrections[`${title}-${chapter}`].split('-');
+      fullCode = `${corrected[0]}-${corrected[1]}-${section}`;
+      console.log(`OCR correction (partial): ${title}-${chapter} -> ${corrected[0]}-${corrected[1]}`);
     }
     
-    // Skip any other example/template lines
-    if (lineLower.includes('example') || lineLower.includes('sample') || lineLower.includes('for example')) {
-      console.log('Skipping example line:', lineTrimmed.slice(0, 60));
-      continue;
+    // Normalize the code
+    const normalizedCode = fullCode.toUpperCase();
+    
+    // Skip if already seen
+    if (seenCodes.has(normalizedCode)) continue;
+    seenCodes.add(normalizedCode);
+    
+    // Determine charge class from suffix
+    let chargeClass: string | null = null;
+    if (classMap[suffix]) {
+      chargeClass = classMap[suffix];
     }
     
-    // Skip lines that look like headers or labels
-    if (line.match(/^\s*(Code|Charge|Level|Class|Criminal\s+charges?)\s*$/i)) continue;
-    if (line.match(/^\s*(Arrest|Booking|Defendant|Case|Officer)\s*:/i)) continue;
+    // Get charge name from abbreviation, known list, or default
+    let chargeName = chargeAbbreviations[suffix] || 
+                     knownCharges[fullCode] || 
+                     knownCharges[fullCode.toLowerCase()] ||
+                     `Utah Code ${fullCode}`;
     
-    // CRITICAL: Real charges from the Patrol Screening Sheet MUST have:
-    // 1. A statute code at or near the START of the line (within first 15 chars)
-    // 2. A charge class (MA, MB, MC, F1, F2, F3) on the same line
-    
-    // First check if line has a charge class - if not, skip it entirely
-    const classMatch = line.match(/\b(MA|MB|MC|F1|F2|F3)\b/i);
-    if (!classMatch) {
-      continue; // No charge class = not a real charge line
-    }
-    
-    // Look for Utah code pattern - must be near the START of the line (within first 15 chars)
-    const codeMatch = lineTrimmed.match(/^.{0,15}?\b(\d{2})-(\d{1,3}[aA]?)-(\d{1,4}(?:\.\d+)?)\b/);
-    if (codeMatch) {
-      let title = codeMatch[1];
-      let chapter = codeMatch[2].toUpperCase();
-      const section = codeMatch[3];
-      
-      // Apply OCR corrections for common misreads
-      const titleChapter = `${title}-${chapter}`;
-      if (ocrCorrections[titleChapter]) {
-        const corrected = ocrCorrections[titleChapter].split('-');
-        title = corrected[0];
-        chapter = corrected[1];
-        console.log(`OCR correction: ${titleChapter} -> ${title}-${chapter}`);
-      }
-      
-      const normalizedCode = `${title}-${chapter}-${section}`;
-      
-      // Skip if already seen
-      if (seenCodes.has(normalizedCode.toUpperCase())) continue;
-      seenCodes.add(normalizedCode.toUpperCase());
-      
-      const chargeClass = classMap[classMatch[1].toUpperCase()] || null;
-      
-      // Get charge name from known list or extract from line
-      let chargeName = knownCharges[normalizedCode] || knownCharges[normalizedCode.toLowerCase()];
-      if (!chargeName) {
-        // Try to extract name from text after the code
-        const afterCode = line.slice(line.indexOf(codeMatch[0]) + codeMatch[0].length);
-        const nameMatch = afterCode.match(/[-–:\s]+([A-Za-z][A-Za-z\s,]{5,50}?)(?:\s*[-–(]|\s*MA|\s*MB|\s*MC|\s*F\d|$)/);
-        if (nameMatch) {
-          chargeName = nameMatch[1].trim();
-        } else {
-          chargeName = `Utah Code ${normalizedCode}`;
-        }
-      }
-      
-      charges.push({ code: normalizedCode, chargeName, chargeClass });
-      console.log('Found CURRENT charge:', normalizedCode, chargeName, chargeClass);
-    }
+    charges.push({ code: fullCode, chargeName, chargeClass });
+    console.log('Found CURRENT charge:', fullCode, chargeName, chargeClass || '(no class)', 'suffix:', suffix);
   }
   
   console.log('Total screening sheet charges found:', charges.length, charges.map(c => c.code).join(', ') || 'none');
