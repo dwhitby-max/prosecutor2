@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.33.0",
+    "@radix-ui/react-alert-dialog": "^1.1.15",
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.4",

@@ -1,9 +1,19 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppShell } from "@/components/layout/app-shell";
-import { ShieldAlert, FileText, Clock, Loader2, Trash2, CheckSquare, Square } from "lucide-react";
+import { ShieldAlert, FileText, Clock, Loader2, Trash2, CheckSquare, Square, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type CaseListItem = {
   id: string;
@@ -19,7 +29,10 @@ export default function Dashboard() {
   const [completedCases, setCompletedCases] = useState<CaseListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
+  const [selectedActiveForDelete, setSelectedActiveForDelete] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteSource, setDeleteSource] = useState<'active' | 'completed'>('completed');
 
   const fetchCases = async () => {
     try {
@@ -47,17 +60,35 @@ export default function Dashboard() {
     fetchCases();
   }, []);
 
-  const toggleSelect = (id: string) => {
-    const newSelected = new Set(selectedForDelete);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
+  const toggleSelect = (id: string, isActive: boolean) => {
+    if (isActive) {
+      const newSelected = new Set(selectedActiveForDelete);
+      if (newSelected.has(id)) {
+        newSelected.delete(id);
+      } else {
+        newSelected.add(id);
+      }
+      setSelectedActiveForDelete(newSelected);
     } else {
-      newSelected.add(id);
+      const newSelected = new Set(selectedForDelete);
+      if (newSelected.has(id)) {
+        newSelected.delete(id);
+      } else {
+        newSelected.add(id);
+      }
+      setSelectedForDelete(newSelected);
     }
-    setSelectedForDelete(newSelected);
   };
 
-  const selectAll = () => {
+  const selectAllActive = () => {
+    if (selectedActiveForDelete.size === cases.length) {
+      setSelectedActiveForDelete(new Set());
+    } else {
+      setSelectedActiveForDelete(new Set(cases.map(c => c.id)));
+    }
+  };
+
+  const selectAllCompleted = () => {
     if (selectedForDelete.size === completedCases.length) {
       setSelectedForDelete(new Set());
     } else {
@@ -65,36 +96,46 @@ export default function Dashboard() {
     }
   };
 
-  const deleteSelected = async () => {
-    if (selectedForDelete.size === 0) return;
+  const openDeleteDialog = (source: 'active' | 'completed') => {
+    setDeleteSource(source);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    const idsToDelete = deleteSource === 'active' 
+      ? Array.from(selectedActiveForDelete) 
+      : Array.from(selectedForDelete);
     
-    if (!confirm(`Are you sure you want to delete ${selectedForDelete.size} case(s)? This cannot be undone.`)) {
-      return;
-    }
+    if (idsToDelete.length === 0) return;
     
     setDeleting(true);
     try {
       const response = await fetch('/api/cases', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: Array.from(selectedForDelete) })
+        body: JSON.stringify({ ids: idsToDelete })
       });
       
       if (response.ok) {
-        setSelectedForDelete(new Set());
+        if (deleteSource === 'active') {
+          setSelectedActiveForDelete(new Set());
+        } else {
+          setSelectedForDelete(new Set());
+        }
         await fetchCases();
       }
     } catch (err) {
       console.error('Failed to delete cases:', err);
     } finally {
       setDeleting(false);
+      setShowDeleteDialog(false);
     }
   };
 
   const processingCases = cases.filter(c => c.status === 'processing');
   const readyCases = cases.filter(c => c.status === 'completed' || c.status === 'flagged');
 
-  const renderCaseRow = (caseItem: CaseListItem, i: number, showCheckbox = false) => {
+  const renderCaseRow = (caseItem: CaseListItem, i: number, showCheckbox = false, isActive = false) => {
     const initials = caseItem.defendantName
       .split(/[,\s]+/)
       .filter(n => n.length > 0)
@@ -111,6 +152,10 @@ export default function Dashboard() {
                    diffHours < 24 ? `${diffHours}h ago` :
                    `${Math.floor(diffHours / 24)}d ago`;
 
+    const isSelected = isActive 
+      ? selectedActiveForDelete.has(caseItem.id) 
+      : selectedForDelete.has(caseItem.id);
+
     return (
       <div 
         key={caseItem.id} 
@@ -120,11 +165,11 @@ export default function Dashboard() {
         <div className="flex items-center gap-4">
           {showCheckbox && (
             <button
-              onClick={() => toggleSelect(caseItem.id)}
+              onClick={() => toggleSelect(caseItem.id, isActive)}
               className="p-1 hover:bg-muted rounded"
               data-testid={`checkbox-case-${caseItem.id}`}
             >
-              {selectedForDelete.has(caseItem.id) ? (
+              {isSelected ? (
                 <CheckSquare className="h-5 w-5 text-primary" />
               ) : (
                 <Square className="h-5 w-5 text-muted-foreground" />
@@ -237,11 +282,45 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="overflow-hidden">
-                <div className="divide-y divide-border">
-                  {cases.map((caseItem, i) => renderCaseRow(caseItem, i, false))}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={selectAllActive}
+                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                      data-testid="button-select-all-active"
+                    >
+                      {selectedActiveForDelete.size === cases.length && cases.length > 0 ? (
+                        <CheckSquare className="h-4 w-4" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                      {selectedActiveForDelete.size === cases.length && cases.length > 0 ? 'Deselect All' : 'Select All'}
+                    </button>
+                    {selectedActiveForDelete.size > 0 && (
+                      <span className="text-sm text-muted-foreground">
+                        {selectedActiveForDelete.size} selected
+                      </span>
+                    )}
+                  </div>
+                  {selectedActiveForDelete.size > 0 && (
+                    <button
+                      onClick={() => openDeleteDialog('active')}
+                      disabled={deleting}
+                      className="flex items-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+                      data-testid="button-delete-active"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete Selected
+                    </button>
+                  )}
                 </div>
-              </Card>
+                <Card className="overflow-hidden">
+                  <div className="divide-y divide-border">
+                    {cases.map((caseItem, i) => renderCaseRow(caseItem, i, true, true))}
+                  </div>
+                </Card>
+              </div>
             )}
           </TabsContent>
 
@@ -259,16 +338,16 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <button
-                      onClick={selectAll}
+                      onClick={selectAllCompleted}
                       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
                       data-testid="button-select-all"
                     >
-                      {selectedForDelete.size === completedCases.length ? (
+                      {selectedForDelete.size === completedCases.length && completedCases.length > 0 ? (
                         <CheckSquare className="h-4 w-4" />
                       ) : (
                         <Square className="h-4 w-4" />
                       )}
-                      {selectedForDelete.size === completedCases.length ? 'Deselect All' : 'Select All'}
+                      {selectedForDelete.size === completedCases.length && completedCases.length > 0 ? 'Deselect All' : 'Select All'}
                     </button>
                     {selectedForDelete.size > 0 && (
                       <span className="text-sm text-muted-foreground">
@@ -278,23 +357,19 @@ export default function Dashboard() {
                   </div>
                   {selectedForDelete.size > 0 && (
                     <button
-                      onClick={deleteSelected}
+                      onClick={() => openDeleteDialog('completed')}
                       disabled={deleting}
                       className="flex items-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 px-3 py-2 rounded-md text-sm font-medium disabled:opacity-50"
                       data-testid="button-delete-selected"
                     >
-                      {deleting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
+                      <Trash2 className="h-4 w-4" />
                       Delete Selected
                     </button>
                   )}
                 </div>
                 <Card className="overflow-hidden">
                   <div className="divide-y divide-border">
-                    {completedCases.map((caseItem, i) => renderCaseRow(caseItem, i, true))}
+                    {completedCases.map((caseItem, i) => renderCaseRow(caseItem, i, true, false))}
                   </div>
                 </Card>
               </div>
@@ -302,6 +377,41 @@ export default function Dashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Confirm Deletion
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deleteSource === 'active' ? selectedActiveForDelete.size : selectedForDelete.size} case(s)? 
+              This action cannot be undone. All associated documents, violations, criminal records, and images will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Cases
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
