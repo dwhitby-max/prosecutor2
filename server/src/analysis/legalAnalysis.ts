@@ -77,9 +77,13 @@ Write a comprehensive narrative summary (3-5 paragraphs) that covers:
 4. What evidence was collected or observed
 5. The outcome of the encounter (arrest, citation, booking, etc.)
 
-Use professional, objective legal language. Focus on FACTS, not opinions.
-Do NOT include any legal conclusions about guilt or innocence.
-Do NOT repeat statute text or legal codes - just summarize what happened.`;
+CRITICAL RULES:
+- Use professional, objective legal language. Focus on FACTS, not opinions.
+- Do NOT include any legal conclusions about guilt or innocence.
+- Do NOT repeat statute text or legal codes - just summarize what happened.
+- Do NOT include ANY criminal history information (prior arrests, prior convictions, past offenses).
+- Do NOT mention the defendant's criminal record or history in any way.
+- Focus ONLY on THIS incident and what happened during THIS encounter.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",

@@ -460,7 +460,7 @@ export default function AnalysisPage() {
                     <AlertTriangle className="h-4 w-4" /> Charges
                   </TabsTrigger>
                   <TabsTrigger value="synopsis" className="gap-2" data-testid="tab-synopsis">
-                    <User className="h-4 w-4" /> Synopsis
+                    <User className="h-4 w-4" /> Analysis Summary
                   </TabsTrigger>
                   <TabsTrigger value="images" className="gap-2" data-testid="tab-images">
                     <Image className="h-4 w-4" /> Images
