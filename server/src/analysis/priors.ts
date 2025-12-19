@@ -169,46 +169,49 @@ function parseInlineCriminalHistory(text: string): PriorCharge[] {
 }
 
 function parseChargesFromIncidentBlock(block: string): PriorCharge[] {
-  const lines = block.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
-
   const out: PriorCharge[] = [];
-  let currentCharge: string[] = [];
-  let dateOfArrest: string | null = null;
-  let offenseTracking: string | null = null;
-
-  for (const line of lines) {
-    const doa = line.match(/Date\s+of\s+Arrest\s*[:\-]?\s*(.+)$/i);
-    if (doa && typeof doa[1] === 'string') dateOfArrest = doa[1].trim();
-
-    const ot = line.match(/Offense\s+Tracking\s*#\s*[:\-]?\s*(.+)$/i);
-    if (ot && typeof ot[1] === 'string') offenseTracking = ot[1].trim();
-
-    const looksLikeCharge = line.toUpperCase().startsWith('CHARGE') || line.toUpperCase().includes('CHARGE:');
-    if (looksLikeCharge) {
-      if (currentCharge.length > 0) {
+  
+  // Look for DATE OF ARREST to get the date
+  const dateMatch = block.match(/DATE\s+OF\s+ARREST[:\s]+(\d{1,2}\/\d{1,2}\/\d{4})/i);
+  const dateOfArrest = dateMatch ? dateMatch[1] : null;
+  
+  // Look for OFFENSE TRACKING # to get the tracking number
+  const trackingMatch = block.match(/OFFENSE\s+TRACKING\s*#\s*\(OTN\)[:\s]+([A-Z0-9]+)/i);
+  const offenseTracking = trackingMatch ? trackingMatch[1] : null;
+  
+  // Look for OFFENSE LITERAL entries - these contain the clean offense text
+  const offenseLiteralRegex = /OFFENSE\s+LITERAL[:\s]+([A-Z][A-Z\s\/\-()]+?)(?=\s+STATUTE[:\s]|\s+NCIC|\s+JURISDICTION|\s*$)/gi;
+  let match;
+  const seenOffenses = new Set<string>();
+  
+  while ((match = offenseLiteralRegex.exec(block)) !== null) {
+    const offenseText = match[1].trim().slice(0, 80);
+    // Dedupe - only add if we haven't seen this offense
+    if (offenseText.length > 3 && !seenOffenses.has(offenseText.toLowerCase())) {
+      seenOffenses.add(offenseText.toLowerCase());
+      out.push({
+        offenseTrackingNumber: offenseTracking,
+        dateOfArrest,
+        chargeText: offenseText,
+      });
+    }
+  }
+  
+  // If no OFFENSE LITERAL found, try ARRESTING CHARGE pattern
+  if (out.length === 0) {
+    const arrestingChargeRegex = /ARRESTING\s+CHARGE[:\s]+([A-Z][A-Z\s\/\-()]+?)(?=\s+STATUTE|\s+OFFENSE|\s*$)/gi;
+    while ((match = arrestingChargeRegex.exec(block)) !== null) {
+      const offenseText = match[1].trim().slice(0, 80);
+      if (offenseText.length > 3 && !seenOffenses.has(offenseText.toLowerCase())) {
+        seenOffenses.add(offenseText.toLowerCase());
         out.push({
           offenseTrackingNumber: offenseTracking,
           dateOfArrest,
-          chargeText: currentCharge.join(' ').trim(),
+          chargeText: offenseText,
         });
-        currentCharge = [];
-        dateOfArrest = null;
-        offenseTracking = null;
       }
-      currentCharge.push(line);
-      continue;
     }
-
-    if (currentCharge.length > 0) currentCharge.push(line);
   }
-
-  if (currentCharge.length > 0) {
-    out.push({
-      offenseTrackingNumber: offenseTracking,
-      dateOfArrest,
-      chargeText: currentCharge.join(' ').trim(),
-    });
-  }
-
+  
   return out;
 }

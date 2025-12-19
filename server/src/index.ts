@@ -971,33 +971,12 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
               summary = 'Document analysis complete. Awaiting manual review.';
             }
 
-            // Build criminal history summary from priors (priors is a PriorsSummary object)
+            // Criminal history summary will be built from clean structured records later
+            // (after recordsToCreate is populated) - not from raw priors object
             const priors = analysisObj.priors;
-            let criminalHistorySummary = !isReadable 
+            let criminalHistorySummaryDefault = !isReadable 
               ? 'Unable to extract criminal history from scanned document. OCR required.'
               : 'No prior offenses found in documents.';
-            if (priors && typeof priors === 'object' && 'incidents' in priors) {
-              const priorsObj = priors as { incidentCount: number; chargeCount: number; incidents: Array<{ incidentLabel: string; charges: Array<{ dateOfArrest: string | null; chargeText: string }> }> };
-              if (priorsObj.chargeCount > 0) {
-                const summaryParts: string[] = [];
-                for (const incident of (priorsObj.incidents || []).slice(0, 3)) {
-                  for (const charge of (incident.charges || []).slice(0, 2)) {
-                    summaryParts.push(`${sanitize(charge.dateOfArrest || 'Unknown date')}: ${sanitize(charge.chargeText?.slice(0, 60) || 'Unknown offense')}`);
-                    if (summaryParts.length >= 3) break;
-                  }
-                  if (summaryParts.length >= 3) break;
-                }
-                const remaining = priorsObj.chargeCount - summaryParts.length;
-                criminalHistorySummary = summaryParts.join('; ') + (remaining > 0 ? ` (+${remaining} more charges)` : '');
-              }
-            } else if (Array.isArray(priors) && priors.length > 0) {
-              const priorSummaries = priors.slice(0, 3).map((p: any) => 
-                `${sanitize(p.date || 'Unknown date')}: ${sanitize(p.offense || p.charge || 'Unknown offense')}`
-              );
-              criminalHistorySummary = priorSummaries.join('; ') + (priors.length > 3 ? ` (+${priors.length - 3} more)` : '');
-            }
-
-            await storage.updateCaseSummary(newCase.id, sanitize(summary), sanitize(criminalHistorySummary));
 
             // Always try to extract defendant name, case number, and booked into jail from text
             // Try fullText first (includes case number header), then narrative
@@ -1177,10 +1156,27 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
               }
             }
 
+            // Build criminal history summary from structured records (clean data)
+            let finalCriminalHistorySummary = criminalHistorySummaryDefault;
+            
             if (recordsToCreate.length > 0) {
               await storage.createCriminalRecords(recordsToCreate);
               console.log(`Created ${recordsToCreate.length} criminal records for case ${newCase.id}`);
+              
+              // Build clean summary from structured records
+              const cleanSummaryParts: string[] = [];
+              for (const record of recordsToCreate.slice(0, 3)) {
+                const date = record.date !== 'Unknown' ? record.date : '';
+                const offense = record.offense.slice(0, 60);
+                cleanSummaryParts.push(date ? `${date}: ${offense}` : offense);
+              }
+              const remainingCount = recordsToCreate.length - cleanSummaryParts.length;
+              finalCriminalHistorySummary = cleanSummaryParts.join('; ') + 
+                (remainingCount > 0 ? ` (+${remainingCount} more records)` : '');
             }
+            
+            // Single update with clean summary and criminal history
+            await storage.updateCaseSummary(newCase.id, sanitize(summary), sanitize(finalCriminalHistorySummary));
 
             // Save extracted images from PDFs
             const extractedImages = analysisObj.extractedImages as Array<{ mimeType: string; imageData: string; pageNumber: number | null }> || [];
