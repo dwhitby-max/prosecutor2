@@ -35,9 +35,16 @@ A full-stack web application for legal case screening and analysis. The system a
 Located in `shared/schema.ts`:
 - **cases** - Main case records with defendant info and status
 - **documents** - Uploaded PDF documents linked to cases
-- **violations** - Code violations identified in cases
+- **violations** - Code violations identified in cases (includes `chargeType` field: 'current' or 'historical')
 - **criminalRecords** - Criminal history records for defendants
 - **caseImages** - Extracted images from PDF documents (base64 encoded)
+
+### Charge Type Classification
+Violations are classified as 'current' or 'historical' based on their source:
+- **current**: Charges extracted from the Patrol Screening Sheet charge table (real charges in this case)
+- **historical**: Citations detected via fallback text scanning (may include criminal history references)
+
+The frontend filters to only display 'current' charges in the "Current Case Charges" section.
 
 ### API Endpoints
 - `GET /api/cases` - List all cases
