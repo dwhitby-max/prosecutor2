@@ -906,8 +906,6 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
         bookedIntoJail: parsed.bookedIntoJail ?? null,
       };
       
-      console.log('[UPLOAD] Creating case with explicit values:', JSON.stringify(caseData));
-      
       const newCase = await storage.createCase(caseData);
       
       console.log('Case created successfully:', newCase.id);
