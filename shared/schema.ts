@@ -32,6 +32,7 @@ export const violations = pgTable("violations", {
   code: text("code").notNull(),
   chargeName: text("charge_name"),
   chargeClass: text("charge_class"),
+  chargeType: text("charge_type", { enum: ["current", "historical"] }).default("current"),
   source: text("source", { enum: ["Utah State Code", "West Valley City Code"] }).notNull(),
   description: text("description").notNull(),
   statuteText: text("statute_text"),
