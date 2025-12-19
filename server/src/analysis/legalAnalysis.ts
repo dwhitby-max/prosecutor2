@@ -25,18 +25,24 @@ function getGeminiClient(): GoogleGenAI | null {
   const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   
-  if (!apiKey || !baseUrl) {
-    console.log('Gemini not configured for legal analysis');
+  if (!apiKey) {
+    console.log('Gemini not configured for legal analysis - no API key');
     return null;
   }
   
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      apiVersion: "",
-      baseUrl,
-    },
-  });
+  // If we have a custom base URL (Replit integration), use it
+  if (baseUrl) {
+    return new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        apiVersion: "",
+        baseUrl,
+      },
+    });
+  }
+  
+  // Otherwise use default Google Gemini API
+  return new GoogleGenAI({ apiKey });
 }
 
 export async function generateCaseSummaryNarrative(
