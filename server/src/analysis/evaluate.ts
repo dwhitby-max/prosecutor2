@@ -1,7 +1,7 @@
 import { extractPdfImages, extractPdfText, isScannedDocument } from './pdf.js';
 import { detectCitations } from './citations.js';
 import { getOcrProviderFromEnv } from './ocr.js';
-import { lookupUtahCode, lookupWvcCode, isValidStatuteText } from './statutes.js';
+import { lookupUtahCode, lookupWvcCode, isValidStatuteTextAny } from './statutes.js';
 import { parseUtahCriminalHistory } from './priors.js';
 import { getDb } from '../storage/db.js';
 import { id } from '../storage/ids.js';
@@ -372,9 +372,10 @@ async function cachedStatute(
             const title = typeof rec.title === 'string' ? rec.title : null;
             const fetchedAtIso = typeof rec.fetchedAtIso === 'string' ? rec.fetchedAtIso : null;
             // Validate cached content - reject navigation HTML that was incorrectly cached
+            // Use jurisdiction-aware validation (WVC statutes may be shorter and lack subsection markers)
             if (text && url && fetchedAtIso) {
-              if (!isValidStatuteText(text)) {
-                console.log(`[WARN] SQLite cached statute for ${code} failed validation, refetching...`);
+              if (!isValidStatuteTextAny(text, jurisdiction)) {
+                console.log(`[WARN] SQLite cached statute for ${code} (${jurisdiction}) failed validation, refetching...`);
                 // Delete the bad cache entry
                 try {
                   db.prepare('DELETE FROM code_cache WHERE jurisdiction = ? AND normalized_key = ?').run(jurisdiction, code);
@@ -395,8 +396,9 @@ async function cachedStatute(
   if (!('ok' in res) || res.ok !== true) return null;
 
   // Validate fetched content before caching - reject navigation HTML
-  if (!isValidStatuteText(res.text)) {
-    console.log(`[WARN] Fetched statute for ${code} failed validation, not caching or returning`);
+  // Use jurisdiction-aware validation (WVC statutes may be shorter and lack subsection markers)
+  if (!isValidStatuteTextAny(res.text, jurisdiction)) {
+    console.log(`[WARN] Fetched statute for ${code} (${jurisdiction}) failed validation, not caching or returning`);
     return null;
   }
 

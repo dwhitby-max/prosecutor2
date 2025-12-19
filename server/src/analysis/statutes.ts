@@ -219,6 +219,7 @@ export function validateStatuteContent(citation: string, text: string): { valid:
 }
 
 // Simple boolean wrapper for validation - returns true only for valid statute text
+// Use isValidStatuteTextWvc for WVC statutes which may not have subsection markers
 export function isValidStatuteText(text: string | null | undefined): boolean {
   if (!text || text.length < MIN_STATUTE_LENGTH) return false;
   
@@ -233,6 +234,45 @@ export function isValidStatuteText(text: string | null | undefined): boolean {
   // REQUIRED: Must have subsection markers - keywords alone not sufficient
   const hasSubsectionMarkers = /\(\d+\)|\([a-z]\)|\([ivx]+\)/i.test(text);
   
+  return hasSubsectionMarkers;
+}
+
+// Lenient validation for WVC (West Valley City) statutes which may not have subsection markers
+// and may be shorter than Utah State Code
+export function isValidStatuteTextWvc(text: string | null | undefined): boolean {
+  if (!text || text.length < 100) return false; // Lower minimum for WVC
+  
+  const lowerText = text.toLowerCase();
+  
+  // Reject if ANY critical navigation phrase is found
+  for (const phrase of CRITICAL_NAV_PHRASES) {
+    if (lowerText.includes(phrase)) return false;
+  }
+  
+  // WVC statutes don't require subsection markers
+  // Just check it's not obvious navigation HTML
+  return true;
+}
+
+// Combined validation that handles both Utah and WVC statutes
+export function isValidStatuteTextAny(text: string | null | undefined, jurisdiction?: 'UT' | 'WVC'): boolean {
+  if (!text) return false;
+  
+  // Reject navigation phrases for all jurisdictions
+  const lowerText = text.toLowerCase();
+  for (const phrase of CRITICAL_NAV_PHRASES) {
+    if (lowerText.includes(phrase)) return false;
+  }
+  
+  // WVC has more lenient requirements
+  if (jurisdiction === 'WVC') {
+    return text.length >= 100;
+  }
+  
+  // Utah requires subsection markers and longer text
+  if (text.length < MIN_STATUTE_LENGTH) return false;
+  
+  const hasSubsectionMarkers = /\(\d+\)|\([a-z]\)|\([ivx]+\)/i.test(text);
   return hasSubsectionMarkers;
 }
 
