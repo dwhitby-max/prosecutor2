@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import multer from 'multer';
 import { storage } from '../storage.js';
 import { extractPdfText } from './analysis/pdf.js';
-import { runAnalysis } from './analysis/evaluate.js';
+import { runAnalysis, extractCaseSynopsis } from './analysis/evaluate.js';
 import { lookupUtahCode, lookupWvcCode } from './analysis/statutes.js';
 
 interface ApiResponse<T = unknown> {
@@ -945,18 +945,29 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             const sanitize = (s: string): string => 
               (s || '').replace(/\x00/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ').trim();
             
-            // Build summary - always produce non-empty value
+            // Build summary from Case Synopsis or Officer's Actions section ONLY
             const rawNarrative = analysisObj.narrative || '';
             const narrative = sanitize(rawNarrative);
             const docSummaries = analysisObj.documents as any[] || [];
-            let summary: string;
+            const fullText = sanitize(analysisObj.fullText || '');
             
             // Check if narrative is mostly readable text (not binary garbage)
             const readableChars = narrative.replace(/[^a-zA-Z0-9\s.,!?;:'"()-]/g, '').length;
             const isReadable = narrative.length > 0 && (readableChars / narrative.length) > 0.5;
             
-            if (isReadable && narrative.length > 50) {
-              summary = sanitize(narrative.slice(0, 500)) + (narrative.length > 500 ? '...' : '');
+            // Extract proper Case Synopsis or Officer's Actions section
+            let summary: string;
+            const extractedSynopsis = extractCaseSynopsis(fullText);
+            
+            if (extractedSynopsis) {
+              summary = sanitize(extractedSynopsis);
+            } else if (isReadable && narrative.length > 50) {
+              // Fallback: use narrative but strip criminal history mentions
+              const cleanedNarrative = narrative
+                .replace(/Criminal\s+history\s*[-–:].*/gi, '')
+                .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
+                .trim();
+              summary = sanitize(cleanedNarrative.slice(0, 500)) + (cleanedNarrative.length > 500 ? '...' : '');
             } else if (docSummaries.length > 0) {
               const totalPages = docSummaries.reduce((acc: number, d: any) => acc + (d.pageCount || 0), 0);
               const totalChars = docSummaries.reduce((acc: number, d: any) => acc + (d.textLength || 0), 0);
@@ -980,7 +991,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
 
             // Always try to extract defendant name, case number, and booked into jail from text
             // Try fullText first (includes case number header), then narrative
-            const fullText = sanitize(analysisObj.fullText || '');
+            // (fullText was already defined above for synopsis extraction)
             const textsToTry = fullText.length > 100 ? [fullText, narrative] : [narrative];
             
             for (const textToSearch of textsToTry) {

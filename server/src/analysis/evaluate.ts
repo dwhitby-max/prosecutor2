@@ -8,6 +8,79 @@ import { id } from '../storage/ids.js';
 import { GoogleGenAI } from "@google/genai";
 import { ocrPdfWithDocumentAI } from "./documentAiOcr";
 
+/**
+ * Extract the Case Synopsis or Officer's Actions section from the document text.
+ * This is the only text that should appear in the case summary.
+ */
+export function extractCaseSynopsis(fullText: string): string | null {
+  // First, try to find "Case Synopsis:" section (on the first page of screening sheet)
+  const synopsisPatterns = [
+    /Case\s+Synopsis[:\s]+(.+?)(?=Criminal\s+history|RAP:|Offer\s+notes|$)/is,
+    /Case\s+Synopsis[:\s]+(.+?)(?=\n\s*\n|\n[A-Z][a-z]+:|$)/is,
+  ];
+  
+  for (const pattern of synopsisPatterns) {
+    const match = fullText.match(pattern);
+    if (match && match[1]) {
+      const synopsis = match[1].trim();
+      // Make sure it's meaningful content (not just headers or garbage)
+      if (synopsis.length > 20 && synopsis.length < 2000) {
+        // Strip out any criminal history mentions that might have slipped in
+        const cleaned = synopsis
+          .replace(/Criminal\s+history\s*[-–:].*/gi, '')
+          .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
+          .trim();
+        if (cleaned.length > 20) {
+          return cleaned.slice(0, 500) + (cleaned.length > 500 ? '...' : '');
+        }
+      }
+    }
+  }
+  
+  // Second, try to find "OFFICER'S ACTIONS" section (in General Office Hardcopy)
+  // Note: Handle both straight and curly apostrophes (',' and ')
+  const officerActionsPatterns = [
+    /OFFICER[''\u2019]?S\s+ACTIONS[:\s]+(.+?)(?=EVIDENCE|WITNESSES|ADDITIONAL|$)/is,
+    /OFFICER[''\u2019]?S\s+ACTIONS[:\s]+(.+?)(?=\n\s*\n\s*[A-Z]{3,}|\n\s*Page\s+\d+|$)/is,
+  ];
+  
+  for (const pattern of officerActionsPatterns) {
+    const match = fullText.match(pattern);
+    if (match && match[1]) {
+      const actions = match[1].trim();
+      if (actions.length > 20 && actions.length < 3000) {
+        // Strip out any criminal history mentions
+        const cleaned = actions
+          .replace(/Criminal\s+history\s*[-–:].*/gi, '')
+          .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
+          .trim();
+        if (cleaned.length > 20) {
+          return cleaned.slice(0, 500) + (cleaned.length > 500 ? '...' : '');
+        }
+      }
+    }
+  }
+  
+  // Third, try to find narrative section after "NARRATIVE:" header
+  const narrativePattern = /NARRATIVE[:\s]+(.+?)(?=\n\s*\n\s*[A-Z]{3,}|$)/is;
+  const narrativeMatch = fullText.match(narrativePattern);
+  if (narrativeMatch && narrativeMatch[1]) {
+    const narrative = narrativeMatch[1].trim();
+    if (narrative.length > 50 && narrative.length < 3000) {
+      // Strip criminal history mentions
+      const cleaned = narrative
+        .replace(/Criminal\s+history\s*[-–:].*/gi, '')
+        .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
+        .trim();
+      if (cleaned.length > 50) {
+        return cleaned.slice(0, 500) + (cleaned.length > 500 ? '...' : '');
+      }
+    }
+  }
+  
+  return null;
+}
+
 function looksGarbledPrefix(text: string): boolean {
   if (!text) return true;
   const head = text.slice(0, 1200);
