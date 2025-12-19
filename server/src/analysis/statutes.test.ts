@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateStatuteContent, isValidStatuteText } from './statutes';
+import { validateStatuteContent, isValidStatuteText, isValidStatuteTextAny, isValidStatuteTextWvc } from './statutes';
 
 describe('validateStatuteContent', () => {
   describe('rejects navigation HTML', () => {
@@ -382,5 +382,155 @@ describe('critical navigation phrase rejection', () => {
     expect(text.length).toBeGreaterThan(400);
     const result = validateStatuteContent('58-37-8', text);
     expect(result.valid).toBe(true);
+  });
+});
+
+// ============================================================================
+// REGRESSION TESTS - CRITICAL: DO NOT MODIFY WITHOUT REVIEW
+// These tests protect against the navigation HTML leak bug that occurred when
+// statute text showed "Search Settings Login" instead of actual code content.
+// See replit.md for full documentation of this critical fix.
+// ============================================================================
+
+describe('CRITICAL: isValidStatuteTextAny - Jurisdiction-Aware Validation', () => {
+  describe('Utah (UT) statutes - strict validation', () => {
+    it('MUST reject text under 400 chars for Utah statutes', () => {
+      const shortText = '(1) Short statute text. (a) Subsection.';
+      expect(isValidStatuteTextAny(shortText, 'UT')).toBe(false);
+    });
+
+    it('MUST reject Utah statutes without subsection markers', () => {
+      const noMarkers = 'This is a long text without any subsection markers like parentheses with numbers or letters. It just keeps going and going with more text to exceed the minimum length requirement of 400 characters. More padding here. Even more padding text. Additional content to make it long enough. Final padding text here.'.repeat(2);
+      expect(noMarkers.length).toBeGreaterThan(400);
+      expect(isValidStatuteTextAny(noMarkers, 'UT')).toBe(false);
+    });
+
+    it('MUST accept valid Utah statute with markers and length', () => {
+      const validUT = `
+        58-37-8. Prohibited acts -- Penalties.
+        (1) Prohibited acts A -- Penalties and reporting:
+          (a) Except as authorized by this chapter, it is unlawful for a person to:
+            (i) produce, manufacture, or dispense a controlled substance;
+            (ii) distribute a controlled or counterfeit substance;
+        (2) Any person convicted of violating Subsection (1)(a) with respect to:
+          (a) a substance classified in Schedule I or II is guilty of a felony.
+        More content for length requirement padding text here to exceed four hundred chars.
+      `;
+      expect(validUT.length).toBeGreaterThan(400);
+      expect(isValidStatuteTextAny(validUT, 'UT')).toBe(true);
+    });
+  });
+
+  describe('WVC (West Valley City) statutes - lenient validation', () => {
+    it('MUST accept WVC statutes under 400 chars (if over 100)', () => {
+      const shortWvc = 'Section 8.1.2. Unlawful acts. Any person found violating this ordinance shall be guilty of a class B misdemeanor. Penalty: up to $500 fine.';
+      expect(shortWvc.length).toBeGreaterThan(100);
+      expect(shortWvc.length).toBeLessThan(400);
+      expect(isValidStatuteTextAny(shortWvc, 'WVC')).toBe(true);
+    });
+
+    it('MUST accept WVC statutes without subsection markers', () => {
+      const noMarkersWvc = 'Section 8.1.2. Noise Ordinance. Excessive noise between 10pm and 7am is prohibited within city limits. Violators subject to fine.';
+      expect(noMarkersWvc.length).toBeGreaterThan(100);
+      expect(isValidStatuteTextAny(noMarkersWvc, 'WVC')).toBe(true);
+    });
+
+    it('MUST reject WVC statutes under 100 chars', () => {
+      const tooShort = 'Section 8.1. Short.';
+      expect(tooShort.length).toBeLessThan(100);
+      expect(isValidStatuteTextAny(tooShort, 'WVC')).toBe(false);
+    });
+  });
+
+  describe('CRITICAL: Navigation phrase rejection for ALL jurisdictions', () => {
+    const navPhrases = [
+      'skip to content',
+      'skip to main content',
+      'skip to navigation',
+      'accessibility settings',
+      'use the settings button',
+      'all legislators',
+      'find legislators',
+      'view bills',
+      'find a bill',
+      'utah state legislature',
+      'house bills',
+      'senate bills',
+    ];
+
+    navPhrases.forEach(phrase => {
+      it(`MUST reject Utah statute containing "${phrase}"`, () => {
+        const badUT = `
+          58-37-8. Prohibited acts -- Penalties.
+          ${phrase}
+          (1) Some legal text here with proper structure and detailed content.
+          (a) Subsection with detailed information about the requirements.
+          (b) Another subsection with more requirements and details here.
+          (2) More legal text to pad the length properly with extra words.
+          Additional content to exceed 400 characters minimum requirement.
+          More padding text for the length requirement in this test case.
+          Even more content to ensure we pass the 400 character threshold.
+          Final padding text to make absolutely sure this test works right.
+        `;
+        expect(badUT.length).toBeGreaterThan(400);
+        expect(isValidStatuteTextAny(badUT, 'UT')).toBe(false);
+      });
+
+      it(`MUST reject WVC statute containing "${phrase}"`, () => {
+        const badWvc = `Section 8.1.2. Unlawful acts. ${phrase}. Violators subject to fine up to $500. Additional text to exceed the minimum length requirement of 100 characters for WVC statutes.`;
+        expect(badWvc.length).toBeGreaterThan(100);
+        expect(isValidStatuteTextAny(badWvc, 'WVC')).toBe(false);
+      });
+    });
+  });
+
+  describe('CRITICAL: Real-world navigation HTML rejection', () => {
+    it('MUST reject actual le.utah.gov navigation content', () => {
+      const realNavHtml = `
+        Utah Code Section 58-37-8 
+        Accessibility 
+        Use the Settings Button to view other accessibility Settings 
+        Skip to Content 
+        Search 
+        Settings 
+        Login 
+        Search 
+        Legislators 
+        All Legislators 
+        Find Legislators 
+        By Session (1896-Current)
+      `;
+      expect(isValidStatuteTextAny(realNavHtml, 'UT')).toBe(false);
+    });
+
+    it('MUST accept actual Utah statute content', () => {
+      const realStatute = `
+        58-37-8. Prohibited acts -- Penalties.
+        (1) Prohibited acts A -- Penalties and reporting:
+          (a) Except as authorized by this chapter, and under circumstances not amounting to an offense described in Section 58-37-8.1, trafficking of fentanyl or a fentanyl-related substance, it is unlawful for a person to knowingly and intentionally:
+            (i) produce, manufacture, or dispense, or to possess with intent to produce, manufacture, or dispense, a controlled or counterfeit substance;
+            (ii) distribute a controlled or counterfeit substance, or to agree, consent, offer, or arrange to distribute a controlled or counterfeit substance;
+        (2) Any person convicted of violating Subsection (1)(a) with respect to:
+          (a) a substance classified in Schedule I or II, a controlled substance analog, or gammahydroxybutyric acid is guilty of a second degree felony.
+      `;
+      expect(isValidStatuteTextAny(realStatute, 'UT')).toBe(true);
+    });
+  });
+});
+
+describe('isValidStatuteTextWvc - WVC-specific validation', () => {
+  it('accepts short WVC ordinances over 100 chars', () => {
+    const wvcOrdinance = 'Section 8.1.2. Noise Ordinance. Excessive noise between 10pm and 7am is prohibited within city limits.';
+    expect(wvcOrdinance.length).toBeGreaterThan(100);
+    expect(isValidStatuteTextWvc(wvcOrdinance)).toBe(true);
+  });
+
+  it('rejects WVC with navigation phrases', () => {
+    const wvcWithNav = 'Section 8.1.2. Skip to content. Noise Ordinance.';
+    expect(isValidStatuteTextWvc(wvcWithNav)).toBe(false);
+  });
+
+  it('rejects very short WVC text under 100 chars', () => {
+    expect(isValidStatuteTextWvc('Short')).toBe(false);
   });
 });

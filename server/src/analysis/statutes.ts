@@ -111,12 +111,23 @@ const NAVIGATION_KEYWORDS = [
 // Minimum length for valid statute text (increased for better quality)
 const MIN_STATUTE_LENGTH = 400;
 
-// Critical navigation phrases that IMMEDIATELY disqualify text as statute content
-// If ANY of these appear (case-insensitive), the text is navigation HTML, not statute content
-// All comparisons done in lowercase
-// Navigation phrases that indicate this is NOT real statute content
-// NOTE: Avoid single generic words like "search", "home", "contact" that appear in legal text
-// (e.g., "search warrant", "home detention", "contact with victim")
+// ============================================================================
+// CRITICAL SECTION - DO NOT MODIFY WITHOUT RUNNING FULL TEST SUITE
+// ============================================================================
+// This list protects against the "navigation HTML leak" bug where statute text
+// showed "Search Settings Login" instead of actual Utah State Code content.
+// 
+// REGRESSION TESTS: server/src/analysis/statutes.test.ts (run: npm test)
+// DOCUMENTATION: See replit.md "Utah Statute Text Fetching" section
+//
+// If ANY of these phrases appear (case-insensitive), the text is rejected
+// as navigation HTML from le.utah.gov, not actual statute content.
+//
+// RULES FOR MODIFYING THIS LIST:
+// 1. NEVER add single generic words (they appear in legal text)
+// 2. NEVER remove phrases without checking test suite passes
+// 3. ALWAYS run full test suite after changes: cd server && npm test
+// ============================================================================
 const CRITICAL_NAV_PHRASES = [
   'skip to content',
   'skip to main content',

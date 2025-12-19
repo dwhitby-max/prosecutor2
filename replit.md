@@ -179,12 +179,26 @@ The "statute text reverting to navigation HTML" issue was caused by a race condi
 5. **Proper cleanup**: Component unmount cancels all pending requests and clears timeouts
 
 **Regression Tests (server/src/analysis/statutes.test.ts):**
-- 35 tests validating statute content requirements
-- Tests minimum length (>400 chars)
+- 70 tests validating statute content requirements
+- Tests minimum length (>400 chars for Utah, >100 chars for WVC)
 - Tests navigation phrase rejection (multi-word phrases like "Skip to content", "Utah State Legislature", "Find a Bill")
-- Tests statute structure markers requirement (subsection markers like (1), (a) are required)
+- Tests statute structure markers requirement (subsection markers like (1), (a) required for Utah only)
 - Tests that legitimate legal terms like "search warrant", "home detention" are allowed
+- Tests jurisdiction-aware validation (Utah strict, WVC lenient)
 - Run with: `cd server && npx vitest run src/analysis/statutes.test.ts --config vitest.config.ts`
+
+**CRITICAL: How to Protect This Fix from Future Changes:**
+1. **Always run tests before modifying statute validation**: `cd server && npm test`
+2. **Never modify CRITICAL_NAV_PHRASES without running full test suite**
+3. **Multi-layer validation protects against navigation HTML leak:**
+   - `validateStatuteContent()` - Primary validation for Utah statutes
+   - `isValidStatuteTextAny()` - Jurisdiction-aware wrapper (UT strict, WVC lenient)
+   - `isValidStatuteTextWvc()` - Lenient validation for West Valley City
+4. **Validation runs at 4 checkpoints:**
+   - Before caching in PostgreSQL (statutes.ts `saveToCache()`)
+   - When retrieving from PostgreSQL cache (statutes.ts `getCachedStatute()`)
+   - When retrieving from SQLite cache (evaluate.ts `cachedStatute()`)
+   - Before storing in violations table (index.ts)
 
 **Parser Guard (parseVersionedUtahLegHtml):**
 - Strips nav/header/footer/script/style elements BEFORE text extraction
