@@ -70,6 +70,7 @@ type Violation = {
   code: string;
   chargeName: string | null;
   chargeClass: string | null;
+  chargeType: 'current' | 'historical' | null;
   source: string;
   description: string;
   statuteText: string | null;
@@ -339,7 +340,8 @@ export default function AnalysisPage() {
     );
   }
 
-  const currentViolations = data.violations || [];
+  // Filter to show only current charges (not historical/criminal history citations)
+  const currentViolations = (data.violations || []).filter(v => v.chargeType === 'current' || v.chargeType === null);
   const uploadDate = new Date(data.uploadDate).toLocaleDateString();
   
   // Debug: track every render with statute text state
