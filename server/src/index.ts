@@ -457,6 +457,71 @@ app.get('/api/cases', async (req, res) => {
   }
 });
 
+// Debug endpoint to test Document AI connection
+app.get('/api/debug/document-ai', async (req, res) => {
+  try {
+    const { ocrPdfWithDocumentAI } = await import('./analysis/documentAiOcr.js');
+    
+    // Check environment variables first
+    const requiredEnvVars = [
+      'DOCUMENT_AI_PROJECT_ID',
+      'DOCUMENT_AI_LOCATION', 
+      'DOCUMENT_AI_PROCESSOR_ID',
+      'DOCUMENT_AI_SERVICE_ACCOUNT_JSON'
+    ];
+    
+    const envStatus: Record<string, string> = {};
+    for (const key of requiredEnvVars) {
+      const value = process.env[key];
+      if (!value || !value.trim()) {
+        envStatus[key] = 'MISSING';
+      } else if (key === 'DOCUMENT_AI_SERVICE_ACCOUNT_JSON') {
+        try {
+          const parsed = JSON.parse(value);
+          envStatus[key] = `OK (project: ${parsed.project_id || 'unknown'})`;
+        } catch {
+          envStatus[key] = 'INVALID JSON';
+        }
+      } else {
+        envStatus[key] = `OK (${value.slice(0, 20)}...)`;
+      }
+    }
+    
+    const ocrProvider = process.env.OCR_PROVIDER || 'document_ai';
+    
+    // Create a minimal test PDF (just text "TEST")
+    const testPdfBase64 = 'JVBERi0xLjQKMSAwIG9iago8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIKPj4KZW5kb2JqCjIgMCBvYmoKPDwKL1R5cGUgL1BhZ2VzCi9LaWRzIFszIDAgUl0KL0NvdW50IDEKL01lZGlhQm94IFswIDAgNjEyIDc5Ml0KPj4KZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1BhcmVudCAyIDAgUgovQ29udGVudHMgNCAwIFIKL1Jlc291cmNlcyA8PAovRm9udCA8PAovRjEgNSAwIFIKPj4KPj4KPj4KZW5kb2JqCjQgMCBvYmoKPDwKL0xlbmd0aCA0NAo+PgpzdHJlYW0KQlQKL0YxIDEyIFRmCjEwMCA3MDAgVGQKKFRFU1QpIFRqCkVUCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PAovVHlwZSAvRm9udAovU3VidHlwZSAvVHlwZTEKL0Jhc2VGb250IC9IZWx2ZXRpY2EKPj4KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxNDggMDAwMDAgbiAKMDAwMDAwMDI4NyAwMDAwMCBuIAowMDAwMDAwMzgzIDAwMDAwIG4gCnRyYWlsZXIKPDwKL1NpemUgNgovUm9vdCAxIDAgUgo+PgpzdGFydHhyZWYKNDYyCiUlRU9G';
+    const testPdfBytes = Buffer.from(testPdfBase64, 'base64');
+    
+    console.log('[DEBUG] Testing Document AI connection...');
+    const startTime = Date.now();
+    const extractedText = await ocrPdfWithDocumentAI(testPdfBytes);
+    const duration = Date.now() - startTime;
+    
+    console.log(`[DEBUG] Document AI test successful in ${duration}ms, extracted: "${extractedText}"`);
+    
+    res.json({
+      ok: true,
+      message: 'Document AI connection successful!',
+      ocrProvider,
+      envStatus,
+      testResult: {
+        extractedText: extractedText || '(empty)',
+        duration: `${duration}ms`
+      }
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    console.error('[DEBUG] Document AI test failed:', msg);
+    res.status(500).json({
+      ok: false,
+      error: msg,
+      ocrProvider: process.env.OCR_PROVIDER || 'document_ai',
+      hint: 'Check that all DOCUMENT_AI_* environment variables are set correctly'
+    });
+  }
+});
+
 // Delete multiple cases
 app.delete('/api/cases', async (req, res) => {
   try {
