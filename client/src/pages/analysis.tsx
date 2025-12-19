@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileText, AlertTriangle, History, User, CheckCircle2, XCircle, Loader2, Building, Image } from "lucide-react";
+import { FileText, AlertTriangle, History, User, CheckCircle2, XCircle, Loader2, Building, Image, Scale } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // STATUTE TEXT SOURCE CONTROL:
@@ -583,6 +583,74 @@ export default function AnalysisPage() {
                               </div>
                               <div className="max-h-64 overflow-auto">
                                 <StatuteDisplay code={violation.code} source={violation.source} />
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {/* Interpretation Section - Analysis of whether charges are supported by evidence */}
+                    <div className="mt-8 p-4 bg-purple-50 border-2 border-purple-300 rounded-lg" data-testid="section-interpretation">
+                      <h3 className="text-lg font-serif font-bold text-purple-800 mb-4 flex items-center gap-2">
+                        <Scale className="h-5 w-5" /> Interpretation
+                      </h3>
+                      <p className="text-sm text-purple-700 mb-4">
+                        Analysis of whether the case summary supports each charge based on statutory elements.
+                      </p>
+                      <div className="space-y-4">
+                        {currentViolations.map((violation, idx) => (
+                          <Card key={violation.id} className={cn(
+                            "border-l-4 bg-white",
+                            violation.isViolated ? "border-l-green-500" : "border-l-yellow-500"
+                          )} data-testid={`interpretation-item-${idx}`}>
+                            <CardContent className="p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 font-mono">
+                                    {violation.code}
+                                  </Badge>
+                                  <span className="font-medium text-foreground">{violation.chargeName}</span>
+                                </div>
+                                <Badge 
+                                  variant={violation.isViolated ? "default" : "secondary"}
+                                  className={cn(
+                                    violation.isViolated 
+                                      ? "bg-green-100 text-green-800 border-green-300" 
+                                      : "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                  )}
+                                >
+                                  {violation.isViolated ? "Elements Likely Met" : "Review Required"}
+                                </Badge>
+                              </div>
+                              
+                              <div className="space-y-3">
+                                <div>
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Analysis</p>
+                                  <p className="text-sm text-foreground">{violation.reasoning || 'No detailed analysis available.'}</p>
+                                </div>
+                                
+                                {violation.evidence && violation.evidence !== 'See case synopsis' && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Supporting Evidence</p>
+                                    <p className="text-sm text-muted-foreground italic">"{violation.evidence}"</p>
+                                  </div>
+                                )}
+                                
+                                <div className="flex items-center gap-2 pt-2 border-t">
+                                  <p className="text-xs text-muted-foreground">Confidence:</p>
+                                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div 
+                                      className={cn(
+                                        "h-full rounded-full",
+                                        violation.confidence >= 0.7 ? "bg-green-500" :
+                                        violation.confidence >= 0.4 ? "bg-yellow-500" : "bg-red-500"
+                                      )}
+                                      style={{ width: `${Math.round(violation.confidence * 100)}%` }}
+                                    />
+                                  </div>
+                                  <p className="text-xs font-medium">{Math.round(violation.confidence * 100)}%</p>
+                                </div>
                               </div>
                             </CardContent>
                           </Card>
