@@ -341,7 +341,8 @@ export default function AnalysisPage() {
   }
 
   // Filter to show only current charges (not historical/criminal history citations)
-  const currentViolations = (data.violations || []).filter(v => v.chargeType === 'current' || v.chargeType === null);
+  // Strictly require chargeType === 'current' - null means old data that needs reprocessing
+  const currentViolations = (data.violations || []).filter(v => v.chargeType === 'current');
   const uploadDate = new Date(data.uploadDate).toLocaleDateString();
   
   // Debug: track every render with statute text state

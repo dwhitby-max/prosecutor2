@@ -1049,6 +1049,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             }
             
             // If no screening charges found, fall back to element-level analysis
+            // Note: These may include criminal history citations, so mark as historical since we can't reliably distinguish
             if (violationsToCreate.length === 0 && elements.length > 0) {
               for (const el of elements) {
                 const result = el.result || {};
@@ -1062,9 +1063,9 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                   code: el.code || 'Unknown',
                   chargeName: statuteTitle,
                   chargeClass: null,
-                  chargeType: 'current' as const,
+                  chargeType: 'historical' as const,
                   source: el.jurisdiction === 'WVC' ? 'West Valley City Code' as const : 'Utah State Code' as const,
-                  description: 'Element analysis',
+                  description: 'Element analysis (fallback - no charge table found)',
                   statuteText: statuteText ? sanitize(statuteText.slice(0, 2000)) : null,
                   statuteUrl: statuteUrlEl,
                   criteria: elems.length > 0 ? elems.map((e: any) => e.element).slice(0, 5) : ['Requires manual review'],
