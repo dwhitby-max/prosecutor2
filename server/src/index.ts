@@ -1142,14 +1142,14 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             }
 
             // Save extracted images from PDFs
-            const extractedImages = analysisObj.extractedImages as Array<{ mimeType: string; base64Data: string; pageNumber: number | null }> || [];
+            const extractedImages = analysisObj.extractedImages as Array<{ mimeType: string; imageData: string; pageNumber: number | null }> || [];
             if (extractedImages.length > 0) {
               const imagesToCreate = extractedImages.slice(0, 20).map((img, idx) => ({
                 caseId: newCase.id,
                 documentId: null,
                 filename: `extracted-image-${idx + 1}.${img.mimeType === 'image/png' ? 'png' : 'jpg'}`,
                 mimeType: img.mimeType,
-                imageData: img.base64Data,
+                imageData: img.imageData,
                 pageNumber: img.pageNumber,
               }));
               await storage.createCaseImages(imagesToCreate);

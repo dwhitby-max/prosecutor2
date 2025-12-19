@@ -114,7 +114,7 @@ export async function runAnalysis(args: RunAnalysisArgs): Promise<unknown> {
     console.log("DEBUG_OCR_PROVIDER", provider.kind);
   let mergedText = '';
   const docSummaries: Array<{ pageCount: number | null; textLength: number; imageCount: number; ocrUsed: boolean }> = [];
-  const extractedImages: Array<{ mimeType: string; base64Data: string; pageNumber: number | null }> = [];
+  const extractedImages: Array<{ mimeType: string; imageData: string; pageNumber: number | null }> = [];
 
   for (const pdfBytes of args.pdfBuffers) {
     const t = await extractPdfText(pdfBytes);
@@ -169,7 +169,7 @@ if ((isScannedDocument(t.text) || looksGarbledPrefix(t.text)) && ocrClean.length
     for (const img of imgs.images) {
       extractedImages.push({
         mimeType: img.mimeType,
-        base64Data: img.bytes.toString('base64'),
+        imageData: img.bytes.toString('base64'),
         pageNumber: img.page
       });
     }
