@@ -591,6 +591,65 @@ export default function AnalysisPage() {
                     </div>
                     </>
                   )}
+                  
+                  {/* Criminal History Section - Always shown below charges and statutes */}
+                  <div className="mt-8 p-4 bg-amber-50 border-2 border-amber-300 rounded-lg" data-testid="section-criminal-history">
+                    <h3 className="text-lg font-serif font-bold text-amber-800 mb-4 flex items-center gap-2">
+                      <History className="h-5 w-5" /> Criminal History ({data.criminalRecords?.length || 0} Prior Records)
+                    </h3>
+                    
+                    {data.criminalHistorySummary && (
+                      <Card className="bg-white border-amber-200 mb-4">
+                        <CardContent className="p-4">
+                          <p className="text-sm leading-relaxed text-amber-900">{data.criminalHistorySummary}</p>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {data.criminalRecords && data.criminalRecords.length > 0 ? (
+                      <div className="space-y-3">
+                        {[...data.criminalRecords]
+                          .sort((a, b) => {
+                            const parseDate = (d: string) => {
+                              if (!d || d === 'Unknown') return 0;
+                              const parts = d.split('/');
+                              if (parts.length === 3) {
+                                return new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1])).getTime();
+                              }
+                              return 0;
+                            };
+                            return parseDate(b) - parseDate(a);
+                          })
+                          .slice(0, 10)
+                          .map((record, idx) => (
+                          <Card key={record.id} className="bg-white border-amber-200" data-testid={`history-record-${idx}`}>
+                            <CardContent className="p-3">
+                              <div className="flex items-start gap-3">
+                                <div className="flex-shrink-0 text-center min-w-[60px]">
+                                  <div className="text-xs font-bold text-amber-800">{record.date}</div>
+                                </div>
+                                <div className="flex-1">
+                                  <p className="font-medium text-sm text-foreground">{record.offense}</p>
+                                  <p className="text-xs text-muted-foreground">{record.disposition} • {record.jurisdiction}</p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                        {data.criminalRecords.length > 10 && (
+                          <p className="text-xs text-amber-700 text-center">
+                            Showing 10 of {data.criminalRecords.length} records. See History tab for full list.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <Card className="bg-white border-amber-200">
+                        <CardContent className="p-6 text-center text-muted-foreground">
+                          No prior criminal records found.
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
                 </TabsContent>
 
                 <TabsContent value="history" className="space-y-4">

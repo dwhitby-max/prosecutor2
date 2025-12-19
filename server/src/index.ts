@@ -370,6 +370,14 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
   const lines = chargeSection.split(/[\n\r]+/);
   
   for (const line of lines) {
+    const lineLower = line.toLowerCase().trim();
+    
+    // Skip example/template lines - these are shown as examples in screening sheet templates
+    if (lineLower.includes('example') || lineLower.includes('sample') || lineLower.includes('for example')) {
+      console.log('Skipping example line:', line.slice(0, 60));
+      continue;
+    }
+    
     // Skip lines that look like headers or labels
     if (line.match(/^\s*(Code|Charge|Level|Class|Criminal\s+charges?)\s*$/i)) continue;
     if (line.match(/^\s*(Arrest|Booking|Defendant|Case|Officer)\s*:/i)) continue;
