@@ -294,6 +294,7 @@ function parseIdentityFromText(text: string): { caseNumber: string | null; defen
 }
 
 // Extract charges from Patrol Screening Sheet - only current case charges, not criminal history
+// Uses LINE-BY-LINE parsing starting from "Offense Information" to avoid regex lookahead issues
 function extractChargesFromScreeningSheet(text: string): Array<{ code: string; chargeName: string; chargeClass: string | null }> {
   const charges: Array<{ code: string; chargeName: string; chargeClass: string | null }> = [];
   const seenCodes = new Set<string>();
@@ -332,56 +333,66 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
     'F3': '3rd Degree Felony',
   };
   
-  // Strategy 1: Look for a structured charge table with headers like "Code", "Charge", "Level"
-  // Or look for "Patrol Screening Sheet" and "Offense Information" sections
-  const tablePatterns = [
-    // West Valley City Patrol Screening Sheet format - look for "Offense Information" section
-    /Offense\s+Information[\s\S]*?(?=Criminal\s+(?:history|justice)|BCI|NCIC|Prior\s+(?:arrests|record)|Convictions|UTAH\s+RECORDS|Driver\s+license|Arresting\s+Officer|Victim\s+Information|Witnesses)/i,
-    // Patrol Screening Sheet header - capture everything until criminal history section
-    /Patrol\s+Screening\s+Sheet[\s\S]*?(?=Criminal\s+(?:history|justice)|BCI|NCIC|Prior\s+(?:arrests|record)|Convictions|UTAH\s+RECORDS|Driver\s+license)/i,
-    // Original patterns
-    /Code\s*[|\/]\s*Charge\s*[|\/]\s*(?:Level|Class)[\s\S]*?(?=Criminal\s+(?:history|justice)|BCI|NCIC|Prior\s+(?:arrests|record)|Convictions|UTAH\s+RECORDS|Driver\s+license)/i,
-    /(?:Criminal\s+charges?|Current\s+charges?)[:\s]*(?:and\s+code\s+citations)?[\s\S]*?(?=Criminal\s+(?:history|justice)|BCI|NCIC|Prior\s+(?:arrests|record)|Convictions|UTAH\s+RECORDS|Driver\s+license)/i,
+  // Section headers that indicate we've left the Offense Information section
+  const sectionTerminators = [
+    /^\s*Criminal\s+History/i,
+    /^\s*BCI\s/i,
+    /^\s*NCIC\s/i,
+    /^\s*Prior\s+(arrests|record)/i,
+    /^\s*Convictions/i,
+    /^\s*UTAH\s+RECORDS/i,
+    /^\s*Driver\s+license/i,
+    /^\s*Arresting\s+Officer/i,
+    /^\s*Victim\s+Information/i,
+    /^\s*Witnesses/i,
+    /^\s*Narrative/i,
+    /^\s*Synopsis/i,
   ];
   
-  let chargeSection = '';
-  let usedPattern = '';
-  for (const pattern of tablePatterns) {
-    const match = text.match(pattern);
-    // Allow larger sections for Patrol Screening Sheet (up to 2000 chars) since it includes offense info
-    if (match && match[0].length > 30 && match[0].length < 3000) {
-      chargeSection = match[0].slice(0, 2000);
-      usedPattern = pattern.source.slice(0, 30);
-      console.log('Found charge section with pattern:', usedPattern, 'length:', chargeSection.length);
-      break;
-    }
+  // Find the start of "Offense Information" section
+  const offenseInfoMatch = text.match(/Offense\s+Information/i);
+  if (!offenseInfoMatch) {
+    console.log('No "Offense Information" section found - returning empty charges');
+    return charges;
   }
   
-  // CRITICAL: Do NOT use fallback - if we can't find the Offense Information section,
-  // return empty array. Using fallback scans the whole document and picks up 
-  // historical citations, narrative references, and prior records as "current" charges.
-  if (!chargeSection || chargeSection.length < 50) {
-    console.log('No Offense Information section found - returning empty charges (no fallback)');
-    return charges; // Return empty array - don't scan whole document
-  }
+  const startIndex = offenseInfoMatch.index! + offenseInfoMatch[0].length;
+  console.log('Found "Offense Information" at index', offenseInfoMatch.index, '- starting scan from', startIndex);
   
-  // DEBUG: Log the full charge section content to understand the format
-  console.log('=== CHARGE SECTION CONTENT (first 500 chars) ===');
-  console.log(chargeSection.slice(0, 500));
-  console.log('=== END CHARGE SECTION ===');
+  // Get all text after "Offense Information" and split into lines
+  const afterOffenseInfo = text.slice(startIndex);
+  const lines = afterOffenseInfo.split(/[\n\r]+/);
   
-  // Look for charge lines - typically formatted as:
-  // "58-37-8 - Possession of Controlled Substance MA"
-  // or within table rows
-  const lines = chargeSection.split(/[\n\r]+/);
+  console.log('=== OFFENSE INFO LINES (first 10) ===');
+  lines.slice(0, 10).forEach((line, i) => console.log(`Line ${i}: ${line.slice(0, 80)}`));
+  console.log('=== END OFFENSE INFO ===');
+  
+  let skippedFirstLine = false;
   
   for (const line of lines) {
     const lineLower = line.toLowerCase().trim();
     const lineTrimmed = line.trim();
     
-    // Skip example/template lines - these are shown as examples in screening sheet templates
+    // Check if we've hit a section terminator - stop processing
+    if (sectionTerminators.some(pattern => pattern.test(lineTrimmed))) {
+      console.log('Hit section terminator, stopping:', lineTrimmed.slice(0, 40));
+      break;
+    }
+    
+    // Skip empty lines
+    if (lineTrimmed.length < 5) continue;
+    
+    // CRITICAL: Skip the FIRST non-empty line after "Offense Information" - it's always an example header
+    // Example: "CODE (example: 58-37-8) CHARGE (example: Assault)"
+    if (!skippedFirstLine) {
+      console.log('Skipping first line (example header):', lineTrimmed.slice(0, 60));
+      skippedFirstLine = true;
+      continue;
+    }
+    
+    // Skip any other example/template lines
     if (lineLower.includes('example') || lineLower.includes('sample') || lineLower.includes('for example')) {
-      console.log('Skipping example line:', line.slice(0, 60));
+      console.log('Skipping example line:', lineTrimmed.slice(0, 60));
       continue;
     }
     
@@ -390,10 +401,8 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
     if (line.match(/^\s*(Arrest|Booking|Defendant|Case|Officer)\s*:/i)) continue;
     
     // CRITICAL: Real charges from the Patrol Screening Sheet MUST have:
-    // 1. A statute code at or near the START of the line (not buried in narrative text)
+    // 1. A statute code at or near the START of the line (within first 15 chars)
     // 2. A charge class (MA, MB, MC, F1, F2, F3) on the same line
-    // Lines without a charge class are NOT real charges
-    // Lines where the code appears deep in the text (>30 chars from start) are narrative references
     
     // First check if line has a charge class - if not, skip it entirely
     const classMatch = line.match(/\b(MA|MB|MC|F1|F2|F3)\b/i);
@@ -401,9 +410,8 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
       continue; // No charge class = not a real charge line
     }
     
-    // Look for Utah code pattern - must be near the START of the line (within first 40 chars)
-    // This filters out narrative sentences that mention statutes mid-sentence
-    const codeMatch = lineTrimmed.match(/^.{0,40}?\b(\d{2})-(\d{1,3}[aA]?)-(\d{1,4}(?:\.\d+)?)\b/);
+    // Look for Utah code pattern - must be near the START of the line (within first 15 chars)
+    const codeMatch = lineTrimmed.match(/^.{0,15}?\b(\d{2})-(\d{1,3}[aA]?)-(\d{1,4}(?:\.\d+)?)\b/);
     if (codeMatch) {
       let title = codeMatch[1];
       let chapter = codeMatch[2].toUpperCase();
@@ -440,11 +448,11 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
       }
       
       charges.push({ code: normalizedCode, chargeName, chargeClass });
-      console.log('Found REAL charge (has class):', normalizedCode, chargeName, chargeClass);
+      console.log('Found CURRENT charge:', normalizedCode, chargeName, chargeClass);
     }
   }
   
-  console.log('Found screening sheet charges:', charges.map(c => c.code).join(', ') || 'none');
+  console.log('Total screening sheet charges found:', charges.length, charges.map(c => c.code).join(', ') || 'none');
   
   return charges;
 }
