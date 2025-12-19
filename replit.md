@@ -33,11 +33,18 @@ A full-stack web application for legal case screening and analysis. The system a
 
 ### Database Schema
 Located in `shared/schema.ts`:
-- **cases** - Main case records with defendant info and status
+- **cases** - Main case records with defendant info and status (includes `caseSummaryNarrative` and `legalAnalysis` for AI-generated content)
 - **documents** - Uploaded PDF documents linked to cases
 - **violations** - Code violations identified in cases (includes `chargeType` field: 'current' or 'historical')
 - **criminalRecords** - Criminal history records for defendants
 - **caseImages** - Extracted images from PDF documents (base64 encoded)
+
+### AI-Powered Analysis
+After case documents are processed, Gemini AI generates:
+- **Case Summary Narrative**: A 3-5 paragraph professional summary of the incident, involved parties, officer observations, evidence, and outcome
+- **Legal Analysis**: For each charge, compares case facts against statutory requirements with conclusions (SUPPORTED/QUESTIONABLE/INSUFFICIENT EVIDENCE)
+
+Located in `server/src/analysis/legalAnalysis.ts`
 
 ### Charge Type Classification
 Violations are classified as 'current' or 'historical' based on their source:

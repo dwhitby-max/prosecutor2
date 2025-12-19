@@ -37,6 +37,7 @@ export interface IStorage {
   updateCaseSummary(id: string, summary: string, criminalHistorySummary?: string): Promise<void>;
   updateCaseIdentity(id: string, defendantName: string | null, caseNumber: string | null): Promise<void>;
   updateCaseBookedIntoJail(id: string, bookedIntoJail: boolean | null): Promise<void>;
+  updateCaseLegalAnalysis(id: string, caseSummaryNarrative: string, legalAnalysis: string): Promise<void>;
   markCaseComplete(id: string, isComplete: boolean): Promise<void>;
   deleteCases(ids: string[]): Promise<void>;
   
@@ -164,6 +165,12 @@ export class DatabaseStorage implements IStorage {
     const start = Date.now();
     await db.update(cases).set({ bookedIntoJail }).where(eq(cases.id, id));
     logQuery('UPDATE', 'cases', start, { id, bookedIntoJail });
+  }
+
+  async updateCaseLegalAnalysis(id: string, caseSummaryNarrative: string, legalAnalysis: string): Promise<void> {
+    const start = Date.now();
+    await db.update(cases).set({ caseSummaryNarrative, legalAnalysis }).where(eq(cases.id, id));
+    logQuery('UPDATE', 'cases', start, { id, summaryNarrativeLength: caseSummaryNarrative?.length, legalAnalysisLength: legalAnalysis?.length });
   }
 
   async deleteCases(ids: string[]): Promise<void> {

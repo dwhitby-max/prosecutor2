@@ -8,6 +8,7 @@ import { storage } from '../storage.js';
 import { extractPdfText } from './analysis/pdf.js';
 import { runAnalysis, extractCaseSynopsis } from './analysis/evaluate.js';
 import { lookupUtahCode, lookupWvcCode, isValidStatuteTextAny } from './analysis/statutes.js';
+import { generateFullLegalAnalysis } from './analysis/legalAnalysis.js';
 
 interface ApiResponse<T = unknown> {
   ok: boolean;
@@ -1207,6 +1208,27 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
               }));
               await storage.createCaseImages(imagesToCreate);
               console.log(`Saved ${imagesToCreate.length} extracted images for case ${newCase.id}`);
+            }
+
+            // Generate AI legal analysis after all data is collected
+            try {
+              console.log(`Generating AI legal analysis for case ${newCase.id}...`);
+              const aiAnalysis = await generateFullLegalAnalysis({
+                caseNumber: newCase.caseNumber,
+                defendantName: newCase.defendantName,
+                extractedText: fullText,
+                synopsis: summary,
+                violations: violationsToCreate.map(v => ({
+                  code: v.code,
+                  chargeName: v.chargeName,
+                  statuteText: v.statuteText,
+                  source: v.source,
+                })),
+              });
+              await storage.updateCaseLegalAnalysis(newCase.id, aiAnalysis.caseSummaryNarrative, aiAnalysis.legalAnalysis);
+              console.log(`AI legal analysis saved for case ${newCase.id}`);
+            } catch (aiError) {
+              console.error('AI legal analysis error:', aiError instanceof Error ? aiError.message : String(aiError));
             }
 
             // Always update status to completed after processing

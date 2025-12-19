@@ -15,6 +15,8 @@ export const cases = pgTable("cases", {
   criminalHistorySummary: text("criminal_history_summary"),
   isMarkedComplete: boolean("is_marked_complete").notNull().default(false),
   bookedIntoJail: boolean("booked_into_jail"),
+  caseSummaryNarrative: text("case_summary_narrative"),
+  legalAnalysis: text("legal_analysis"),
 });
 
 export const documents = pgTable("documents", {

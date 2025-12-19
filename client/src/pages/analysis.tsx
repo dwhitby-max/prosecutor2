@@ -108,6 +108,8 @@ type CaseData = {
   summary: string | null;
   criminalHistorySummary: string | null;
   bookedIntoJail: boolean | null;
+  caseSummaryNarrative: string | null;
+  legalAnalysis: string | null;
   violations: Violation[];
   criminalRecords: CriminalRecord[];
   images: CaseImage[];
@@ -444,18 +446,79 @@ export default function AnalysisPage() {
                 </CardContent>
               </Card>
 
-              <Tabs defaultValue="charges" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 mb-4">
+              <Tabs defaultValue="case-summary" className="w-full">
+                <TabsList className="grid w-full grid-cols-5 mb-4">
+                  <TabsTrigger value="case-summary" className="gap-2" data-testid="tab-case-summary">
+                    <FileText className="h-4 w-4" /> Case Summary
+                  </TabsTrigger>
+                  <TabsTrigger value="legal-analysis" className="gap-2" data-testid="tab-legal-analysis">
+                    <Scale className="h-4 w-4" /> Legal Analysis
+                  </TabsTrigger>
                   <TabsTrigger value="charges" className="gap-2" data-testid="tab-charges">
                     <AlertTriangle className="h-4 w-4" /> Charges
                   </TabsTrigger>
-                  <TabsTrigger value="summary" className="gap-2" data-testid="tab-summary">
-                    <FileText className="h-4 w-4" /> Synopsis
+                  <TabsTrigger value="synopsis" className="gap-2" data-testid="tab-synopsis">
+                    <User className="h-4 w-4" /> Synopsis
                   </TabsTrigger>
                   <TabsTrigger value="images" className="gap-2" data-testid="tab-images">
                     <Image className="h-4 w-4" /> Images
                   </TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="case-summary" className="space-y-4">
+                  <Card>
+                    <CardContent className="p-6">
+                      <h3 className="text-lg font-serif font-bold text-primary mb-4 flex items-center gap-2">
+                        <FileText className="h-5 w-5" /> Case Summary
+                      </h3>
+                      {data.caseSummaryNarrative ? (
+                        <div className="prose prose-sm max-w-none">
+                          <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                            {data.caseSummaryNarrative}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic">
+                          {data.status === 'processing' 
+                            ? 'Case summary is being generated...' 
+                            : 'No case summary available. The AI analysis may not have run for this case.'}
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="legal-analysis" className="space-y-4">
+                  <Card>
+                    <CardContent className="p-6">
+                      <h3 className="text-lg font-serif font-bold text-primary mb-4 flex items-center gap-2">
+                        <Scale className="h-5 w-5" /> Legal Analysis
+                      </h3>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        AI-generated analysis comparing case facts against applicable statutes
+                      </p>
+                      {data.legalAnalysis ? (
+                        <div className="prose prose-sm max-w-none">
+                          <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed" 
+                               dangerouslySetInnerHTML={{ 
+                                 __html: data.legalAnalysis
+                                   .replace(/^## (.+)$/gm, '<h4 class="text-base font-bold text-primary mt-4 mb-2">$1</h4>')
+                                   .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold">$1</strong>')
+                                   .replace(/---/g, '<hr class="my-4 border-t border-gray-200" />')
+                                   .replace(/\n/g, '<br />')
+                               }} 
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic">
+                          {data.status === 'processing' 
+                            ? 'Legal analysis is being generated...' 
+                            : 'No legal analysis available. The AI analysis may not have run for this case.'}
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
 
                 <TabsContent value="charges" className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -659,10 +722,13 @@ export default function AnalysisPage() {
                   
                 </TabsContent>
 
-                <TabsContent value="summary" className="space-y-4">
-                  <h3 className="text-lg font-serif font-bold text-primary">Case Synopsis</h3>
+                <TabsContent value="synopsis" className="space-y-4">
+                  <h3 className="text-lg font-serif font-bold text-primary">Officer Synopsis (Raw Extracted Text)</h3>
                   <Card>
                     <CardContent className="p-6">
+                      <p className="text-xs text-muted-foreground mb-2">
+                        This is the raw synopsis text extracted from the case documents.
+                      </p>
                       <p className="text-sm leading-relaxed whitespace-pre-wrap">
                         {data.summary || 'Analysis in progress. Synopsis will be available soon.'}
                       </p>
