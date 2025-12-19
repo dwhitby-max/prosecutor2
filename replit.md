@@ -119,6 +119,20 @@ This application follows the Development Principles and Working Agreements Docum
 
 ## Critical Implementation Details
 
+### Protected Sections (DO NOT MODIFY WITHOUT PERMISSION)
+The following sections are working correctly and should NOT be changed without explicit user approval:
+- **Current Case Charges** - Charge extraction from Patrol Screening Sheet
+- **Applicable Utah State Code** - Statute text fetching and display
+- **Criminal Records** - Criminal history parsing and display
+
+### Analysis Summary Section
+The Analysis Summary section extracts the "Officer's Actions" from the "General Offense Hardcopy" section:
+- Located in `server/src/analysis/evaluate.ts` - `extractCaseSynopsis()` function
+- Strips page headers (dates, page numbers, department headers) before extraction
+- Searches for "General Offense Hardcopy" or "General Offense Harcopy" section
+- Extracts content from "Officer's Actions" within that section
+- Falls back to searching for "Officer's Actions" anywhere in document
+
 ### Utah Statute Text Fetching (DO NOT MODIFY)
 Located in `server/src/analysis/statutes.ts` - this is the logic for fetching actual Utah state code text.
 

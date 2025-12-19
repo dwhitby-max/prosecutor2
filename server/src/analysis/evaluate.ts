@@ -9,71 +9,106 @@ import { GoogleGenAI } from "@google/genai";
 import { ocrPdfWithDocumentAI } from "./documentAiOcr";
 
 /**
- * Extract the Case Synopsis or Officer's Actions section from the document text.
- * This is the only text that should appear in the case summary.
+ * Strip repeating page headers from document text.
+ * Page headers typically repeat on every page and include things like case numbers, dates, page numbers.
  */
-export function extractCaseSynopsis(fullText: string): string | null {
-  // First, try to find "Case Synopsis:" section (on the first page of screening sheet)
-  const synopsisPatterns = [
-    /Case\s+Synopsis[:\s]+(.+?)(?=Criminal\s+history|RAP:|Offer\s+notes|$)/is,
-    /Case\s+Synopsis[:\s]+(.+?)(?=\n\s*\n|\n[A-Z][a-z]+:|$)/is,
+function stripPageHeaders(text: string): string {
+  // Split into lines
+  const lines = text.split('\n');
+  
+  // Common header patterns to remove
+  const headerPatterns = [
+    /^Page\s+\d+\s+of\s+\d+/i,
+    /^\d+\s+of\s+\d+$/,
+    /^Page\s+\d+$/i,
+    /^West Valley City Police Department$/i,
+    /^General Offense Hardcopy$/i,
+    /^General Offense Harcopy$/i,
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}/,  // Date/time stamps
+    /^Case\s*#?\s*:\s*\d+/i,
+    /^Printed:\s*/i,
   ];
   
-  for (const pattern of synopsisPatterns) {
-    const match = fullText.match(pattern);
+  const filteredLines = lines.filter(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return true; // Keep empty lines for structure
+    
+    // Check against header patterns
+    for (const pattern of headerPatterns) {
+      if (pattern.test(trimmed)) return false;
+    }
+    
+    return true;
+  });
+  
+  return filteredLines.join('\n');
+}
+
+/**
+ * Extract the Officer's Actions section from the "General Offense Hardcopy" section.
+ * This is the only text that should appear in the Analysis Summary.
+ */
+export function extractCaseSynopsis(fullText: string): string | null {
+  // First, strip page headers from the text
+  const cleanedText = stripPageHeaders(fullText);
+  
+  // Look for the "General Offense Hardcopy" or "General Offense Harcopy" section
+  // Then find "Officer's Actions" within it
+  const hardcopyPatterns = [
+    /General\s+Offense\s+Har[dc]copy([\s\S]*?)(?=Criminal\s+History|Utah\s+BCI|$)/i,
+    /General\s+Offense\s+Har[dc]copy([\s\S]*)/i,
+  ];
+  
+  let hardcopySection = cleanedText;
+  
+  for (const pattern of hardcopyPatterns) {
+    const match = cleanedText.match(pattern);
     if (match && match[1]) {
-      const synopsis = match[1].trim();
-      // Make sure it's meaningful content (not just headers or garbage)
-      if (synopsis.length > 20 && synopsis.length < 2000) {
-        // Strip out any criminal history mentions that might have slipped in
-        const cleaned = synopsis
-          .replace(/Criminal\s+history\s*[-–:].*/gi, '')
-          .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
-          .trim();
-        if (cleaned.length > 20) {
-          return cleaned.slice(0, 500) + (cleaned.length > 500 ? '...' : '');
-        }
-      }
+      hardcopySection = match[1];
+      break;
     }
   }
   
-  // Second, try to find "OFFICER'S ACTIONS" section (in General Office Hardcopy)
-  // Note: Handle both straight and curly apostrophes (',' and ')
+  // Now find "Officer's Actions" within the hardcopy section
+  // Handle both straight and curly apostrophes (',' and ')
   const officerActionsPatterns = [
-    /OFFICER[''\u2019]?S\s+ACTIONS[:\s]+(.+?)(?=EVIDENCE|WITNESSES|ADDITIONAL|$)/is,
-    /OFFICER[''\u2019]?S\s+ACTIONS[:\s]+(.+?)(?=\n\s*\n\s*[A-Z]{3,}|\n\s*Page\s+\d+|$)/is,
+    /OFFICER[''\u2019]?S\s+ACTIONS[:\s]*\n?([\s\S]+?)(?=\n\s*(?:EVIDENCE|WITNESSES|ADDITIONAL\s+INFO|PROPERTY|VEHICLES?|SUSPECTS?|VICTIMS?|NARRATIVE|CASE\s+STATUS)\s*[:\n]|$)/i,
+    /OFFICER[''\u2019]?S\s+ACTIONS[:\s]*\n?([\s\S]+?)(?=\n\s*[A-Z]{4,}\s*[:\n]|$)/i,
   ];
   
   for (const pattern of officerActionsPatterns) {
-    const match = fullText.match(pattern);
+    const match = hardcopySection.match(pattern);
     if (match && match[1]) {
-      const actions = match[1].trim();
-      if (actions.length > 20 && actions.length < 3000) {
-        // Strip out any criminal history mentions
-        const cleaned = actions
-          .replace(/Criminal\s+history\s*[-–:].*/gi, '')
-          .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
-          .trim();
-        if (cleaned.length > 20) {
-          return cleaned.slice(0, 500) + (cleaned.length > 500 ? '...' : '');
-        }
+      let actions = match[1].trim();
+      
+      // Strip out any remaining page headers that might have slipped through
+      actions = stripPageHeaders(actions);
+      
+      // Remove any criminal history mentions that might have slipped in
+      actions = actions
+        .replace(/Criminal\s+history\s*[-–:].*/gi, '')
+        .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
+        .trim();
+      
+      if (actions.length > 20 && actions.length < 5000) {
+        return actions.slice(0, 800) + (actions.length > 800 ? '...' : '');
       }
     }
   }
   
-  // Third, try to find narrative section after "NARRATIVE:" header
-  const narrativePattern = /NARRATIVE[:\s]+(.+?)(?=\n\s*\n\s*[A-Z]{3,}|$)/is;
-  const narrativeMatch = fullText.match(narrativePattern);
-  if (narrativeMatch && narrativeMatch[1]) {
-    const narrative = narrativeMatch[1].trim();
-    if (narrative.length > 50 && narrative.length < 3000) {
-      // Strip criminal history mentions
-      const cleaned = narrative
+  // Fallback: try to find "Officer's Actions" anywhere in the document
+  for (const pattern of officerActionsPatterns) {
+    const match = cleanedText.match(pattern);
+    if (match && match[1]) {
+      let actions = match[1].trim();
+      actions = stripPageHeaders(actions);
+      actions = actions
         .replace(/Criminal\s+history\s*[-–:].*/gi, '')
         .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
         .trim();
-      if (cleaned.length > 50) {
-        return cleaned.slice(0, 500) + (cleaned.length > 500 ? '...' : '');
+      
+      if (actions.length > 20 && actions.length < 5000) {
+        return actions.slice(0, 800) + (actions.length > 800 ? '...' : '');
       }
     }
   }
