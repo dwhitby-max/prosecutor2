@@ -37,6 +37,7 @@ Located in `shared/schema.ts`:
 - **documents** - Uploaded PDF documents linked to cases
 - **violations** - Code violations identified in cases
 - **criminalRecords** - Criminal history records for defendants
+- **caseImages** - Extracted images from PDF documents (base64 encoded)
 
 ### API Endpoints
 - `GET /api/cases` - List all cases
