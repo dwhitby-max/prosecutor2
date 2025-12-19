@@ -365,6 +365,11 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
     return charges; // Return empty array - don't scan whole document
   }
   
+  // DEBUG: Log the full charge section content to understand the format
+  console.log('=== CHARGE SECTION CONTENT (first 500 chars) ===');
+  console.log(chargeSection.slice(0, 500));
+  console.log('=== END CHARGE SECTION ===');
+  
   // Look for charge lines - typically formatted as:
   // "58-37-8 - Possession of Controlled Substance MA"
   // or within table rows
