@@ -142,20 +142,24 @@ function cleanExtractedText(text: string | null): string | null {
     const navPhrases = [
       'skip to content',
       'skip to main',
-      'accessibility',
-      'settings',
-      'login',
-      'sign in',
+      'skip to navigation',
       'all legislators',
       'find legislators',
       'view bills',
-      'browse by',
-      'keyword search',
-      'administrative',
       'quick links',
       'house bills',
       'senate bills',
       'find a bill',
+      'utah state legislature',
+      'main navigation',
+      'site navigation',
+      // Only very specific navigation patterns
+      'download as pdf',
+      'download as rtf',
+      'browse by title',
+      'browse by chapter',
+      'select a title from',
+      'select a chapter from',
     ];
     return !navPhrases.some(phrase => trimmed.includes(phrase));
   });

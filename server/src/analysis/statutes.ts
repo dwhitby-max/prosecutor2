@@ -141,6 +141,22 @@ const CRITICAL_NAV_PHRASES = [
   'house bills',
   'senate bills',
   'quick links',
+  // Additional specific navigation phrases from le.utah.gov
+  // NOTE: Only include phrases that are DEFINITELY navigation, not legal terms
+  'download as pdf',
+  'download as rtf',
+  'select a title from',
+  'select a chapter from',
+  'browse by title',
+  'browse by chapter',
+  'click to view',
+  'click to download',
+  'click to expand',
+  'expand all sections',
+  'collapse all sections',
+  'legislative calendar',
+  'bill status',
+  'bill tracking',
 ];
 
 // Validates that statute text is actual statute content, not navigation HTML
@@ -463,6 +479,13 @@ const PARSER_GUARD_PHRASES = [
   'view bills',
   'accessibility settings',
   'use the settings button',
+  // Additional nav phrases - only very specific navigation patterns
+  'download as pdf',
+  'download as rtf',
+  'browse by title',
+  'browse by chapter',
+  'select a title from',
+  'select a chapter from',
 ];
 
 function parseVersionedUtahLegHtml(html: string): string | null {
@@ -480,7 +503,8 @@ function parseVersionedUtahLegHtml(html: string): string | null {
     }
     
     // CRITICAL: Strip nav/header/footer/script/style elements BEFORE extracting text
-    secdiv.find('nav, header, footer, script, style, noscript, iframe, .nav, .menu, .header, .footer').remove();
+    // Also remove TOC, breadcrumbs, and any data-nav elements
+    secdiv.find('nav, header, footer, script, style, noscript, iframe, .nav, .menu, .header, .footer, #toc, .toc, .breadcrumb, .breadcrumbs, [data-nav], .download, .downloads, .history, .links, .sidebar, .navigation, .table-of-contents').remove();
     
     // Get the section title from the first bold elements
     const boldElements = secdiv.find('b');
