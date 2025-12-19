@@ -689,6 +689,7 @@ app.post('/api/cases/:id/reprocess', async (req, res) => {
                 code: charge.code,
                 chargeName: charge.chargeName,
                 chargeClass: charge.chargeClass,
+                chargeType: 'current' as const,
                 source,
                 description: 'Charge extracted from screening sheet',
                 statuteText,
@@ -1034,6 +1035,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                 code: charge.code,
                 chargeName: charge.chargeName,
                 chargeClass: charge.chargeClass,
+                chargeType: 'current' as const,
                 source: charge.code.startsWith('76') || charge.code.match(/^\d{2}-\d/) ? 'Utah State Code' as const : 'West Valley City Code' as const,
                 description: matchingElement ? 'Automated element analysis' : 'Charge extracted from screening sheet',
                 statuteText: statuteText ? sanitize(statuteText.slice(0, 2000)) : null,
@@ -1060,6 +1062,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                   code: el.code || 'Unknown',
                   chargeName: statuteTitle,
                   chargeClass: null,
+                  chargeType: 'current' as const,
                   source: el.jurisdiction === 'WVC' ? 'West Valley City Code' as const : 'Utah State Code' as const,
                   description: 'Element analysis',
                   statuteText: statuteText ? sanitize(statuteText.slice(0, 2000)) : null,
@@ -1074,6 +1077,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             }
             
             // If still no violations but citations found, create from citations
+            // Note: These are fallback citations which may be from criminal history, so mark as historical
             if (violationsToCreate.length === 0 && citations.length > 0) {
               for (const c of citations) {
                 const statuteText = statuteMap.get(c.normalizedKey) || null;
@@ -1084,6 +1088,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                   code: c.normalizedKey || c.raw || 'Unknown',
                   chargeName: statuteTitleCit,
                   chargeClass: null,
+                  chargeType: 'historical' as const,
                   source: c.jurisdiction === 'WVC' ? 'West Valley City Code' as const : 'Utah State Code' as const,
                   description: `Code citation detected: ${c.raw || c.normalizedKey}`,
                   statuteText: statuteText ? sanitize(statuteText.slice(0, 2000)) : null,
