@@ -333,8 +333,13 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
   };
   
   // Strategy 1: Look for a structured charge table with headers like "Code", "Charge", "Level"
-  // Patrol screening sheets often have a table format - use stricter stop patterns
+  // Or look for "Patrol Screening Sheet" and "Offense Information" sections
   const tablePatterns = [
+    // West Valley City Patrol Screening Sheet format - look for "Offense Information" section
+    /Offense\s+Information[\s\S]*?(?=Criminal\s+(?:history|justice)|BCI|NCIC|Prior\s+(?:arrests|record)|Convictions|UTAH\s+RECORDS|Driver\s+license|Arresting\s+Officer|Victim\s+Information|Witnesses)/i,
+    // Patrol Screening Sheet header - capture everything until criminal history section
+    /Patrol\s+Screening\s+Sheet[\s\S]*?(?=Criminal\s+(?:history|justice)|BCI|NCIC|Prior\s+(?:arrests|record)|Convictions|UTAH\s+RECORDS|Driver\s+license)/i,
+    // Original patterns
     /Code\s*[|\/]\s*Charge\s*[|\/]\s*(?:Level|Class)[\s\S]*?(?=Criminal\s+(?:history|justice)|BCI|NCIC|Prior\s+(?:arrests|record)|Convictions|UTAH\s+RECORDS|Driver\s+license)/i,
     /(?:Criminal\s+charges?|Current\s+charges?)[:\s]*(?:and\s+code\s+citations)?[\s\S]*?(?=Criminal\s+(?:history|justice)|BCI|NCIC|Prior\s+(?:arrests|record)|Convictions|UTAH\s+RECORDS|Driver\s+license)/i,
   ];
@@ -342,9 +347,9 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
   let chargeSection = '';
   for (const pattern of tablePatterns) {
     const match = text.match(pattern);
-    // Limit charge section to 600 chars to avoid picking up criminal history
-    if (match && match[0].length > 30 && match[0].length < 800) {
-      chargeSection = match[0].slice(0, 600);
+    // Allow larger sections for Patrol Screening Sheet (up to 2000 chars) since it includes offense info
+    if (match && match[0].length > 30 && match[0].length < 3000) {
+      chargeSection = match[0].slice(0, 2000);
       console.log('Found charge section with pattern, length:', chargeSection.length);
       break;
     }
