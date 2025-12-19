@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileText, AlertTriangle, History, User, CheckCircle2, XCircle, Loader2, Building } from "lucide-react";
+import { FileText, AlertTriangle, History, User, CheckCircle2, XCircle, Loader2, Building, Image } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // STATUTE TEXT SOURCE CONTROL:
@@ -89,6 +89,14 @@ type CriminalRecord = {
   jurisdiction: string;
 };
 
+type CaseImage = {
+  id: string;
+  filename: string;
+  mimeType: string;
+  imageData: string;
+  pageNumber: number | null;
+};
+
 type CaseData = {
   id: string;
   caseNumber: string;
@@ -101,6 +109,7 @@ type CaseData = {
   bookedIntoJail: boolean | null;
   violations: Violation[];
   criminalRecords: CriminalRecord[];
+  images: CaseImage[];
 };
 
 export default function AnalysisPage() {
@@ -433,15 +442,18 @@ export default function AnalysisPage() {
               </Card>
 
               <Tabs defaultValue="charges" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 mb-4">
+                <TabsList className="grid w-full grid-cols-4 mb-4">
                   <TabsTrigger value="charges" className="gap-2" data-testid="tab-charges">
-                    <AlertTriangle className="h-4 w-4" /> Current Charges
+                    <AlertTriangle className="h-4 w-4" /> Charges
                   </TabsTrigger>
                   <TabsTrigger value="history" className="gap-2" data-testid="tab-history">
-                    <History className="h-4 w-4" /> Criminal History
+                    <History className="h-4 w-4" /> History
                   </TabsTrigger>
                   <TabsTrigger value="summary" className="gap-2" data-testid="tab-summary">
-                    <FileText className="h-4 w-4" /> Case Synopsis
+                    <FileText className="h-4 w-4" /> Synopsis
+                  </TabsTrigger>
+                  <TabsTrigger value="images" className="gap-2" data-testid="tab-images">
+                    <Image className="h-4 w-4" /> Images
                   </TabsTrigger>
                 </TabsList>
 
@@ -639,6 +651,35 @@ export default function AnalysisPage() {
                       </p>
                     </CardContent>
                   </Card>
+                </TabsContent>
+
+                <TabsContent value="images" className="space-y-4">
+                  <h3 className="text-lg font-serif font-bold text-primary">Extracted Images ({data.images?.length || 0})</h3>
+                  {data.images && data.images.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {data.images.map((image, idx) => (
+                        <Card key={image.id} className="overflow-hidden">
+                          <CardContent className="p-2">
+                            <img 
+                              src={`data:${image.mimeType};base64,${image.imageData}`}
+                              alt={image.filename}
+                              className="w-full h-auto rounded-md object-contain max-h-64"
+                            />
+                            <p className="text-xs text-muted-foreground mt-2 truncate">{image.filename}</p>
+                            {image.pageNumber && (
+                              <Badge variant="secondary" className="text-[10px] mt-1">Page {image.pageNumber}</Badge>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <Card>
+                      <CardContent className="p-8 text-center text-muted-foreground">
+                        No images were extracted from this case's documents.
+                      </CardContent>
+                    </Card>
+                  )}
                 </TabsContent>
               </Tabs>
             </div>
