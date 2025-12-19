@@ -345,23 +345,24 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
   ];
   
   let chargeSection = '';
+  let usedPattern = '';
   for (const pattern of tablePatterns) {
     const match = text.match(pattern);
     // Allow larger sections for Patrol Screening Sheet (up to 2000 chars) since it includes offense info
     if (match && match[0].length > 30 && match[0].length < 3000) {
       chargeSection = match[0].slice(0, 2000);
-      console.log('Found charge section with pattern, length:', chargeSection.length);
+      usedPattern = pattern.source.slice(0, 30);
+      console.log('Found charge section with pattern:', usedPattern, 'length:', chargeSection.length);
       break;
     }
   }
   
-  // Fallback: Find section between defendant info and criminal history - use stricter cutoff
+  // CRITICAL: Do NOT use fallback - if we can't find the Offense Information section,
+  // return empty array. Using fallback scans the whole document and picks up 
+  // historical citations, narrative references, and prior records as "current" charges.
   if (!chargeSection || chargeSection.length < 50) {
-    const historyMarkers = /(?:Criminal\s+(?:history|justice)|BCI\s+|NCIC\s+|Prior\s+(?:arrests|record)|Convictions:|UTAH\s+RECORDS|Driver\s+license)/i;
-    const historyMatch = text.match(historyMarkers);
-    const cutoff = historyMatch?.index ? Math.min(historyMatch.index, 800) : 800;
-    chargeSection = text.slice(0, cutoff);
-    console.log('Using fallback charge section, length:', chargeSection.length);
+    console.log('No Offense Information section found - returning empty charges (no fallback)');
+    return charges; // Return empty array - don't scan whole document
   }
   
   // Look for charge lines - typically formatted as:
@@ -371,6 +372,7 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
   
   for (const line of lines) {
     const lineLower = line.toLowerCase().trim();
+    const lineTrimmed = line.trim();
     
     // Skip example/template lines - these are shown as examples in screening sheet templates
     if (lineLower.includes('example') || lineLower.includes('sample') || lineLower.includes('for example')) {
@@ -382,8 +384,21 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
     if (line.match(/^\s*(Code|Charge|Level|Class|Criminal\s+charges?)\s*$/i)) continue;
     if (line.match(/^\s*(Arrest|Booking|Defendant|Case|Officer)\s*:/i)) continue;
     
-    // Look for Utah code pattern in this line
-    const codeMatch = line.match(/\b(\d{2})-(\d{1,3}[aA]?)-(\d{1,4}(?:\.\d+)?)\b/);
+    // CRITICAL: Real charges from the Patrol Screening Sheet MUST have:
+    // 1. A statute code at or near the START of the line (not buried in narrative text)
+    // 2. A charge class (MA, MB, MC, F1, F2, F3) on the same line
+    // Lines without a charge class are NOT real charges
+    // Lines where the code appears deep in the text (>30 chars from start) are narrative references
+    
+    // First check if line has a charge class - if not, skip it entirely
+    const classMatch = line.match(/\b(MA|MB|MC|F1|F2|F3)\b/i);
+    if (!classMatch) {
+      continue; // No charge class = not a real charge line
+    }
+    
+    // Look for Utah code pattern - must be near the START of the line (within first 40 chars)
+    // This filters out narrative sentences that mention statutes mid-sentence
+    const codeMatch = lineTrimmed.match(/^.{0,40}?\b(\d{2})-(\d{1,3}[aA]?)-(\d{1,4}(?:\.\d+)?)\b/);
     if (codeMatch) {
       let title = codeMatch[1];
       let chapter = codeMatch[2].toUpperCase();
@@ -404,12 +419,7 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
       if (seenCodes.has(normalizedCode.toUpperCase())) continue;
       seenCodes.add(normalizedCode.toUpperCase());
       
-      // Look for charge class in the same line
-      const classMatch = line.match(/\b(MA|MB|MC|F1|F2|F3)\b/i);
-      let chargeClass: string | null = null;
-      if (classMatch) {
-        chargeClass = classMap[classMatch[1].toUpperCase()] || null;
-      }
+      const chargeClass = classMap[classMatch[1].toUpperCase()] || null;
       
       // Get charge name from known list or extract from line
       let chargeName = knownCharges[normalizedCode] || knownCharges[normalizedCode.toLowerCase()];
@@ -425,7 +435,7 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
       }
       
       charges.push({ code: normalizedCode, chargeName, chargeClass });
-      console.log('Found charge:', normalizedCode, chargeName, chargeClass);
+      console.log('Found REAL charge (has class):', normalizedCode, chargeName, chargeClass);
     }
   }
   
