@@ -1,7 +1,7 @@
 import { extractPdfImages, extractPdfText, isScannedDocument } from './pdf.js';
 import { detectCitations } from './citations.js';
 import { getOcrProviderFromEnv } from './ocr.js';
-import { lookupUtahCode, lookupWvcCode } from './statutes.js';
+import { lookupUtahCode, lookupWvcCode, isValidStatuteText } from './statutes.js';
 import { parseUtahCriminalHistory } from './priors.js';
 import { getDb } from '../storage/db.js';
 import { id } from '../storage/ids.js';
@@ -371,7 +371,18 @@ async function cachedStatute(
             const url = typeof rec.url === 'string' ? rec.url : null;
             const title = typeof rec.title === 'string' ? rec.title : null;
             const fetchedAtIso = typeof rec.fetchedAtIso === 'string' ? rec.fetchedAtIso : null;
-            if (text && url && fetchedAtIso) return { jurisdiction, code, title, text, url, fetchedAtIso };
+            // Validate cached content - reject navigation HTML that was incorrectly cached
+            if (text && url && fetchedAtIso) {
+              if (!isValidStatuteText(text)) {
+                console.log(`[WARN] SQLite cached statute for ${code} failed validation, refetching...`);
+                // Delete the bad cache entry
+                try {
+                  db.prepare('DELETE FROM code_cache WHERE jurisdiction = ? AND normalized_key = ?').run(jurisdiction, code);
+                } catch { /* ignore delete error */ }
+              } else {
+                return { jurisdiction, code, title, text, url, fetchedAtIso };
+              }
+            }
           }
         } catch { /* ignore parse error */ }
       }
@@ -382,6 +393,12 @@ async function cachedStatute(
 
   const res = await fetcher();
   if (!('ok' in res) || res.ok !== true) return null;
+
+  // Validate fetched content before caching - reject navigation HTML
+  if (!isValidStatuteText(res.text)) {
+    console.log(`[WARN] Fetched statute for ${code} failed validation, not caching or returning`);
+    return null;
+  }
 
   // Try to cache, but don't fail if SQLite is unavailable
   try {

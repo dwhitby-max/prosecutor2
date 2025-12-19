@@ -7,7 +7,7 @@ import multer from 'multer';
 import { storage } from '../storage.js';
 import { extractPdfText } from './analysis/pdf.js';
 import { runAnalysis, extractCaseSynopsis } from './analysis/evaluate.js';
-import { lookupUtahCode, lookupWvcCode } from './analysis/statutes.js';
+import { lookupUtahCode, lookupWvcCode, isValidStatuteText } from './analysis/statutes.js';
 
 interface ApiResponse<T = unknown> {
   ok: boolean;
@@ -705,7 +705,10 @@ app.post('/api/cases/:id/reprocess', async (req, res) => {
                 if (lookup.ok) {
                   // Trim to first 2000 chars for storage
                   const newStatuteText = lookup.text.slice(0, 2000);
-                  if (statuteText && statuteText !== newStatuteText) {
+                  // Secondary validation: reject navigation HTML that somehow slipped through
+                  if (!isValidStatuteText(newStatuteText)) {
+                    console.log(`[WARN] Statute text for ${charge.code} failed secondary validation - not storing`);
+                  } else if (statuteText && statuteText !== newStatuteText) {
                     console.log(`[WARN] statuteText for ${charge.code} would be overwritten - keeping original`);
                   } else {
                     statuteText = newStatuteText;
