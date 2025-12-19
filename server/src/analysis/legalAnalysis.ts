@@ -1,5 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
 
+const SLOW_AI_THRESHOLD_MS = 30000;
+
+function logAI(operation: string, duration: number, context?: Record<string, unknown>): void {
+  const level = duration > SLOW_AI_THRESHOLD_MS ? 'WARN' : 'INFO';
+  console.log(`[${level}] AI ${operation} completed in ${duration}ms`, context ? JSON.stringify(context) : '');
+}
+
 export interface ChargeAnalysis {
   code: string;
   chargeName: string;
@@ -45,6 +52,7 @@ export async function generateCaseSummaryNarrative(
     return "AI summary not available - Gemini not configured.";
   }
 
+  const startTime = Date.now();
   try {
     const prompt = `You are a legal analyst reviewing a case file. Generate a clear, professional NARRATIVE SUMMARY of the entire case based on the following information.
 
@@ -72,8 +80,11 @@ Do NOT repeat statute text or legal codes - just summarize what happened.`;
       contents: [{ role: "user", parts: [{ text: prompt }] }]
     });
 
-    return response.text?.trim() || "Unable to generate case summary.";
+    const result = response.text?.trim() || "Unable to generate case summary.";
+    logAI('generateCaseSummaryNarrative', Date.now() - startTime, { caseNumber: caseData.caseNumber, resultLength: result.length });
+    return result;
   } catch (error) {
+    logAI('generateCaseSummaryNarrative', Date.now() - startTime, { caseNumber: caseData.caseNumber, error: true });
     console.error('Error generating case summary:', error instanceof Error ? error.message : String(error));
     return "Error generating case summary.";
   }
@@ -102,6 +113,7 @@ export async function generateLegalAnalysis(
     return "No charges found to analyze.";
   }
 
+  const startTime = Date.now();
   try {
     const chargesDescription = caseData.violations.map((v, i) => {
       return `
@@ -164,8 +176,11 @@ Be objective and analytical. Do not make final guilt/innocence determinations - 
       contents: [{ role: "user", parts: [{ text: prompt }] }]
     });
 
-    return response.text?.trim() || "Unable to generate legal analysis.";
+    const result = response.text?.trim() || "Unable to generate legal analysis.";
+    logAI('generateLegalAnalysis', Date.now() - startTime, { caseNumber: caseData.caseNumber, chargeCount: caseData.violations.length, resultLength: result.length });
+    return result;
   } catch (error) {
+    logAI('generateLegalAnalysis', Date.now() - startTime, { caseNumber: caseData.caseNumber, error: true });
     console.error('Error generating legal analysis:', error instanceof Error ? error.message : String(error));
     return "Error generating legal analysis.";
   }
