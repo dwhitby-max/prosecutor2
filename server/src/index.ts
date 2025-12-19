@@ -1141,6 +1141,21 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
               console.log(`Created ${recordsToCreate.length} criminal records for case ${newCase.id}`);
             }
 
+            // Save extracted images from PDFs
+            const extractedImages = analysisObj.extractedImages as Array<{ mimeType: string; base64Data: string; pageNumber: number | null }> || [];
+            if (extractedImages.length > 0) {
+              const imagesToCreate = extractedImages.slice(0, 20).map((img, idx) => ({
+                caseId: newCase.id,
+                documentId: null,
+                filename: `extracted-image-${idx + 1}.${img.mimeType === 'image/png' ? 'png' : 'jpg'}`,
+                mimeType: img.mimeType,
+                imageData: img.base64Data,
+                pageNumber: img.pageNumber,
+              }));
+              await storage.createCaseImages(imagesToCreate);
+              console.log(`Saved ${imagesToCreate.length} extracted images for case ${newCase.id}`);
+            }
+
             // Always update status to completed after processing
             await storage.updateCaseStatus(newCase.id, 'completed');
             console.log(`Case ${newCase.id} analysis saved with ${violationsToCreate.length} violations, ${recordsToCreate.length} criminal records`);
