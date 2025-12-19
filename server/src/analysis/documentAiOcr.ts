@@ -1,7 +1,7 @@
 import { DocumentProcessorServiceClient } from "@google-cloud/documentai";
 import { PDFDocument } from "pdf-lib";
 
-const MAX_PAGES_PER_REQUEST = 30;
+const MAX_PAGES_PER_REQUEST = 15;
 
 function mustEnv(k: string): string {
   const v = process.env[k];
