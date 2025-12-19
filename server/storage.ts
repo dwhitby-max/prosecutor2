@@ -7,11 +7,14 @@ import {
   type InsertViolation,
   type CriminalRecord,
   type InsertCriminalRecord,
+  type CaseImage,
+  type InsertCaseImage,
   type CaseWithDetails,
   cases,
   documents,
   violations,
-  criminalRecords
+  criminalRecords,
+  caseImages
 } from "../shared/schema.js";
 import { db } from "./db";
 import { eq, desc, asc, inArray } from "drizzle-orm";
@@ -51,6 +54,11 @@ export interface IStorage {
   createCriminalRecord(data: InsertCriminalRecord): Promise<CriminalRecord>;
   createCriminalRecords(data: InsertCriminalRecord[]): Promise<CriminalRecord[]>;
   getCriminalRecordsByCase(caseId: string): Promise<CriminalRecord[]>;
+  
+  // Case Images
+  createCaseImage(data: InsertCaseImage): Promise<CaseImage>;
+  createCaseImages(data: InsertCaseImage[]): Promise<CaseImage[]>;
+  getImagesByCase(caseId: string): Promise<CaseImage[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -83,18 +91,20 @@ export class DatabaseStorage implements IStorage {
       return undefined;
     }
 
-    const [caseDocuments, caseViolations, caseRecords] = await Promise.all([
+    const [caseDocuments, caseViolations, caseRecords, caseImagesResult] = await Promise.all([
       db.select().from(documents).where(eq(documents.caseId, id)),
       db.select().from(violations).where(eq(violations.caseId, id)),
       db.select().from(criminalRecords).where(eq(criminalRecords.caseId, id)),
+      db.select().from(caseImages).where(eq(caseImages.caseId, id)),
     ]);
-    logQuery('SELECT', 'cases+related', start, { id, documents: caseDocuments.length, violations: caseViolations.length, records: caseRecords.length });
+    logQuery('SELECT', 'cases+related', start, { id, documents: caseDocuments.length, violations: caseViolations.length, records: caseRecords.length, images: caseImagesResult.length });
 
     return {
       ...caseRecord,
       documents: caseDocuments,
       violations: caseViolations,
       criminalRecords: caseRecords,
+      images: caseImagesResult,
     };
   }
 
@@ -224,6 +234,28 @@ export class DatabaseStorage implements IStorage {
     const start = Date.now();
     const result = await db.select().from(criminalRecords).where(eq(criminalRecords.caseId, caseId));
     logQuery('SELECT', 'criminalRecords', start, { caseId, count: result.length });
+    return result;
+  }
+
+  async createCaseImage(data: InsertCaseImage): Promise<CaseImage> {
+    const start = Date.now();
+    const [image] = await db.insert(caseImages).values(data).returning();
+    logQuery('INSERT', 'caseImages', start, { caseId: data.caseId, filename: data.filename });
+    return image;
+  }
+
+  async createCaseImages(data: InsertCaseImage[]): Promise<CaseImage[]> {
+    if (data.length === 0) return [];
+    const start = Date.now();
+    const result = await db.insert(caseImages).values(data).returning();
+    logQuery('INSERT', 'caseImages', start, { count: data.length, caseId: data[0]?.caseId });
+    return result;
+  }
+
+  async getImagesByCase(caseId: string): Promise<CaseImage[]> {
+    const start = Date.now();
+    const result = await db.select().from(caseImages).where(eq(caseImages.caseId, caseId));
+    logQuery('SELECT', 'caseImages', start, { caseId, count: result.length });
     return result;
   }
 }

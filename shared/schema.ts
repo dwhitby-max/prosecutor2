@@ -62,10 +62,22 @@ export const statuteCache = pgTable("statute_cache", {
   fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
 });
 
+export const caseImages = pgTable("case_images", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  caseId: varchar("case_id").notNull().references(() => cases.id, { onDelete: "cascade" }),
+  documentId: varchar("document_id").references(() => documents.id, { onDelete: "cascade" }),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type").notNull(),
+  imageData: text("image_data").notNull(),
+  pageNumber: integer("page_number"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const casesRelations = relations(cases, ({ many }) => ({
   documents: many(documents),
   violations: many(violations),
   criminalRecords: many(criminalRecords),
+  images: many(caseImages),
 }));
 
 export const documentsRelations = relations(documents, ({ one }) => ({
@@ -89,6 +101,17 @@ export const criminalRecordsRelations = relations(criminalRecords, ({ one }) => 
   }),
 }));
 
+export const caseImagesRelations = relations(caseImages, ({ one }) => ({
+  case: one(cases, {
+    fields: [caseImages.caseId],
+    references: [cases.id],
+  }),
+  document: one(documents, {
+    fields: [caseImages.documentId],
+    references: [documents.id],
+  }),
+}));
+
 export const insertCaseSchema = createInsertSchema(cases).omit({
   id: true,
   uploadDate: true,
@@ -107,6 +130,11 @@ export const insertCriminalRecordSchema = createInsertSchema(criminalRecords).om
   id: true,
 });
 
+export const insertCaseImageSchema = createInsertSchema(caseImages).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = z.infer<typeof insertCaseSchema>;
 export type Document = typeof documents.$inferSelect;
@@ -115,11 +143,14 @@ export type Violation = typeof violations.$inferSelect;
 export type InsertViolation = z.infer<typeof insertViolationSchema>;
 export type CriminalRecord = typeof criminalRecords.$inferSelect;
 export type InsertCriminalRecord = z.infer<typeof insertCriminalRecordSchema>;
+export type CaseImage = typeof caseImages.$inferSelect;
+export type InsertCaseImage = z.infer<typeof insertCaseImageSchema>;
 
 export type CaseWithDetails = Case & {
   documents: Document[];
   violations: Violation[];
   criminalRecords: CriminalRecord[];
+  images: CaseImage[];
 };
 
 export type StatuteCacheEntry = typeof statuteCache.$inferSelect;
