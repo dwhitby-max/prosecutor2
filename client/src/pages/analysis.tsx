@@ -718,7 +718,7 @@ export default function AnalysisPage() {
                   <div className="space-y-3">
                     {[...data.criminalRecords]
                       .sort((a, b) => {
-                        const parseDate = (d: string) => {
+                        const parseDate = (d: string | undefined) => {
                           if (!d || d === 'Unknown') return 0;
                           const parts = d.split('/');
                           if (parts.length === 3) {
@@ -726,7 +726,7 @@ export default function AnalysisPage() {
                           }
                           return 0;
                         };
-                        return parseDate(b) - parseDate(a);
+                        return parseDate(b.date) - parseDate(a.date);
                       })
                       .slice(0, 15)
                       .map((record, idx) => (
