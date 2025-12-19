@@ -728,12 +728,8 @@ export default function AnalysisPage() {
                   <h3 className="text-lg font-serif font-bold text-primary">Analysis Summary</h3>
                   <Card>
                     <CardContent className="p-6">
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap mb-4">
-                        {data.summary || 'Analysis in progress. Summary will be available soon.'}
-                      </p>
-                      
                       {data.rawOfficerActions && (
-                        <div className="border-t pt-4">
+                        <div className="mb-4 pb-4 border-b">
                           <button
                             onClick={() => setShowFullOfficerActions(!showFullOfficerActions)}
                             className="text-sm text-primary hover:text-primary/80 underline flex items-center gap-1"
@@ -754,6 +750,10 @@ export default function AnalysisPage() {
                           )}
                         </div>
                       )}
+                      
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {data.summary || 'Analysis in progress. Summary will be available soon.'}
+                      </p>
                     </CardContent>
                   </Card>
                 </TabsContent>

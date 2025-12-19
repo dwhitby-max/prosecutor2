@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import multer from 'multer';
 import { storage } from '../storage.js';
 import { extractPdfText } from './analysis/pdf.js';
-import { runAnalysis, extractCaseSynopsis } from './analysis/evaluate.js';
+import { runAnalysis, extractCaseSynopsis, stripCriminalHistory } from './analysis/evaluate.js';
 import { lookupUtahCode, lookupWvcCode, isValidStatuteTextAny } from './analysis/statutes.js';
 import { generateFullLegalAnalysis, summarizeOfficerActions } from './analysis/legalAnalysis.js';
 
@@ -976,10 +976,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
               }
             } else if (isReadable && narrative.length > 50) {
               // Fallback: use narrative but strip criminal history mentions
-              const cleanedNarrative = narrative
-                .replace(/Criminal\s+history\s*[-–:].*/gi, '')
-                .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
-                .trim();
+              const cleanedNarrative = stripCriminalHistory(narrative);
               rawOfficerActions = sanitize(cleanedNarrative);
               try {
                 summary = await summarizeOfficerActions(rawOfficerActions, newCase.caseNumber);

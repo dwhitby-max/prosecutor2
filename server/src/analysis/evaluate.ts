@@ -45,6 +45,57 @@ function stripPageHeaders(text: string): string {
 }
 
 /**
+ * Remove all criminal history content from text.
+ * This function removes criminal history sections and references while preserving
+ * the officer's actions narrative that comes before them.
+ */
+export function stripCriminalHistory(text: string): string {
+  if (!text) return '';
+  
+  let result = text;
+  
+  // Remove "Criminal History:" section up to next major section header or end
+  // This stops at common section headers to avoid removing officer's actions
+  result = result.replace(
+    /Criminal\s+History\s*[:]\s*[\s\S]*?(?=(?:OFFICER[''\u2019]?S\s+ACTIONS|EVIDENCE|WITNESSES|ADDITIONAL\s+INFO|PROPERTY|VEHICLES?|SUSPECTS?|VICTIMS?|NARRATIVE|CASE\s+STATUS|$))/gi, 
+    ''
+  );
+  
+  // Remove inline criminal history references (single line only)
+  result = result.replace(/^.*Criminal\s+History\s*[-–:].*$/gim, '');
+  
+  // Remove arrest/conviction count patterns (single line only)
+  result = result.replace(/^\s*\d+\s+arrests?\.?\s*Convictions?:.*$/gim, '');
+  result = result.replace(/^\s*\d+\s+prior\s+(?:offenses?|records?|convictions?).*$/gim, '');
+  
+  // Remove "(+N more records)" patterns
+  result = result.replace(/\(\+\d+\s+more\s+records?\)/gi, '');
+  
+  // Remove Utah BCI section (up to next section header or end, not everything)
+  result = result.replace(
+    /Utah\s+BCI[\s\S]*?(?=(?:OFFICER[''\u2019]?S\s+ACTIONS|EVIDENCE|WITNESSES|NARRATIVE|$))/gi, 
+    ''
+  );
+  
+  // Remove NCIC section similarly
+  result = result.replace(
+    /NCIC[\s\S]*?(?=(?:OFFICER[''\u2019]?S\s+ACTIONS|EVIDENCE|WITNESSES|NARRATIVE|$))/gi, 
+    ''
+  );
+  
+  // Remove lines that look like criminal record entries (DATE: OFFENSE pattern)
+  result = result.replace(/^\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*:\s*[A-Z][A-Z\s\/]+;?\s*$/gim, '');
+  
+  // Remove common prior offense keywords at start of lines
+  result = result.replace(/^\s*(?:Prior\s+(?:offenses?|arrests?|convictions?)|Past\s+criminal|Criminal\s+record).*$/gim, '');
+  
+  // Clean up multiple blank lines left behind
+  result = result.replace(/\n{3,}/g, '\n\n');
+  
+  return result.trim();
+}
+
+/**
  * Extract the Officer's Actions section from the "General Offense Hardcopy" section.
  * This is the only text that should appear in the Analysis Summary.
  */
@@ -85,10 +136,7 @@ export function extractCaseSynopsis(fullText: string): string | null {
       actions = stripPageHeaders(actions);
       
       // Remove any criminal history mentions that might have slipped in
-      actions = actions
-        .replace(/Criminal\s+history\s*[-–:].*/gi, '')
-        .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
-        .trim();
+      actions = stripCriminalHistory(actions);
       
       if (actions.length > 20 && actions.length < 5000) {
         return actions.slice(0, 800) + (actions.length > 800 ? '...' : '');
@@ -102,10 +150,7 @@ export function extractCaseSynopsis(fullText: string): string | null {
     if (match && match[1]) {
       let actions = match[1].trim();
       actions = stripPageHeaders(actions);
-      actions = actions
-        .replace(/Criminal\s+history\s*[-–:].*/gi, '')
-        .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
-        .trim();
+      actions = stripCriminalHistory(actions);
       
       if (actions.length > 20 && actions.length < 5000) {
         return actions.slice(0, 800) + (actions.length > 800 ? '...' : '');
