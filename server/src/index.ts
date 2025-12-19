@@ -1004,12 +1004,16 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             // Create a map of code to statute for quick lookup
             const statuteMap = new Map<string, string>();
             const statuteUrlMap = new Map<string, string>();
+            const statuteTitleMap = new Map<string, string>();
             for (const st of statutes) {
               if (st && st.code && st.text) {
                 statuteMap.set(st.code, st.text);
               }
               if (st && st.code && st.url) {
                 statuteUrlMap.set(st.code, st.url);
+              }
+              if (st && st.code && st.title) {
+                statuteTitleMap.set(st.code, st.title);
               }
             }
             
@@ -1049,11 +1053,12 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                 const elems = result.elements || [];
                 const statuteText = statuteMap.get(el.code) || null;
                 const statuteUrlEl = statuteUrlMap.get(el.code) || null;
+                const statuteTitle = statuteTitleMap.get(el.code) || null;
                 
                 violationsToCreate.push({
                   caseId: newCase.id,
                   code: el.code || 'Unknown',
-                  chargeName: null,
+                  chargeName: statuteTitle,
                   chargeClass: null,
                   source: el.jurisdiction === 'WVC' ? 'West Valley City Code' as const : 'Utah State Code' as const,
                   description: 'Element analysis',
@@ -1073,10 +1078,11 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
               for (const c of citations) {
                 const statuteText = statuteMap.get(c.normalizedKey) || null;
                 const statuteUrlCit = statuteUrlMap.get(c.normalizedKey) || null;
+                const statuteTitleCit = statuteTitleMap.get(c.normalizedKey) || null;
                 violationsToCreate.push({
                   caseId: newCase.id,
                   code: c.normalizedKey || c.raw || 'Unknown',
-                  chargeName: null,
+                  chargeName: statuteTitleCit,
                   chargeClass: null,
                   source: c.jurisdiction === 'WVC' ? 'West Valley City Code' as const : 'Utah State Code' as const,
                   description: `Code citation detected: ${c.raw || c.normalizedKey}`,
