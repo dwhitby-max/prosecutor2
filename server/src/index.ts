@@ -8,7 +8,7 @@ import { storage } from '../storage.js';
 import { extractPdfText } from './analysis/pdf.js';
 import { runAnalysis, extractCaseSynopsis } from './analysis/evaluate.js';
 import { lookupUtahCode, lookupWvcCode, isValidStatuteTextAny } from './analysis/statutes.js';
-import { generateFullLegalAnalysis } from './analysis/legalAnalysis.js';
+import { generateFullLegalAnalysis, summarizeOfficerActions } from './analysis/legalAnalysis.js';
 
 interface ApiResponse<T = unknown> {
   ok: boolean;
@@ -961,17 +961,32 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             
             // Extract proper Case Synopsis or Officer's Actions section
             let summary: string;
+            let rawOfficerActions: string | null = null;
             const extractedSynopsis = extractCaseSynopsis(fullText);
             
             if (extractedSynopsis) {
-              summary = sanitize(extractedSynopsis);
+              // Store raw officer actions for "view full content" link
+              rawOfficerActions = sanitize(extractedSynopsis);
+              // Generate AI summary of officer's actions
+              try {
+                summary = await summarizeOfficerActions(rawOfficerActions, newCase.caseNumber);
+              } catch (err) {
+                console.error('Failed to summarize officer actions:', err);
+                summary = rawOfficerActions.slice(0, 300) + (rawOfficerActions.length > 300 ? '...' : '');
+              }
             } else if (isReadable && narrative.length > 50) {
               // Fallback: use narrative but strip criminal history mentions
               const cleanedNarrative = narrative
                 .replace(/Criminal\s+history\s*[-–:].*/gi, '')
                 .replace(/\d+\s+arrests?\.?\s*Convictions?:.*/gi, '')
                 .trim();
-              summary = sanitize(cleanedNarrative.slice(0, 500)) + (cleanedNarrative.length > 500 ? '...' : '');
+              rawOfficerActions = sanitize(cleanedNarrative);
+              try {
+                summary = await summarizeOfficerActions(rawOfficerActions, newCase.caseNumber);
+              } catch (err) {
+                console.error('Failed to summarize officer actions:', err);
+                summary = rawOfficerActions.slice(0, 300) + (rawOfficerActions.length > 300 ? '...' : '');
+              }
             } else if (docSummaries.length > 0) {
               const totalPages = docSummaries.reduce((acc: number, d: any) => acc + (d.pageCount || 0), 0);
               const totalChars = docSummaries.reduce((acc: number, d: any) => acc + (d.textLength || 0), 0);
@@ -1190,8 +1205,8 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                 (remainingCount > 0 ? ` (+${remainingCount} more records)` : '');
             }
             
-            // Single update with clean summary and criminal history
-            await storage.updateCaseSummary(newCase.id, sanitize(summary), sanitize(finalCriminalHistorySummary));
+            // Single update with clean summary, criminal history, and raw officer actions
+            await storage.updateCaseSummary(newCase.id, sanitize(summary), sanitize(finalCriminalHistorySummary), rawOfficerActions || undefined);
 
             // Save extracted images from PDFs
             const extractedImages = analysisObj.extractedImages as Array<{ mimeType: string; imageData: string; pageNumber: number | null }> || [];

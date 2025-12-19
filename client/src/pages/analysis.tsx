@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileText, AlertTriangle, History, User, CheckCircle2, XCircle, Loader2, Building, Image, Scale } from "lucide-react";
+import { FileText, AlertTriangle, History, User, CheckCircle2, XCircle, Loader2, Building, Image, Scale, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // STATUTE TEXT SOURCE CONTROL:
@@ -106,6 +106,7 @@ type CaseData = {
   uploadDate: string;
   status: string;
   summary: string | null;
+  rawOfficerActions: string | null;
   criminalHistorySummary: string | null;
   bookedIntoJail: boolean | null;
   caseSummaryNarrative: string | null;
@@ -122,6 +123,7 @@ export default function AnalysisPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [markingComplete, setMarkingComplete] = useState(false);
+  const [showFullOfficerActions, setShowFullOfficerActions] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const fetchSequenceRef = useRef(0);
   const renderCountRef = useRef(0);
@@ -723,15 +725,35 @@ export default function AnalysisPage() {
                 </TabsContent>
 
                 <TabsContent value="synopsis" className="space-y-4">
-                  <h3 className="text-lg font-serif font-bold text-primary">Officer Synopsis (Raw Extracted Text)</h3>
+                  <h3 className="text-lg font-serif font-bold text-primary">Analysis Summary</h3>
                   <Card>
                     <CardContent className="p-6">
-                      <p className="text-xs text-muted-foreground mb-2">
-                        This is the raw synopsis text extracted from the case documents.
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap mb-4">
+                        {data.summary || 'Analysis in progress. Summary will be available soon.'}
                       </p>
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {data.summary || 'Analysis in progress. Synopsis will be available soon.'}
-                      </p>
+                      
+                      {data.rawOfficerActions && (
+                        <div className="border-t pt-4">
+                          <button
+                            onClick={() => setShowFullOfficerActions(!showFullOfficerActions)}
+                            className="text-sm text-primary hover:text-primary/80 underline flex items-center gap-1"
+                          >
+                            {showFullOfficerActions ? 'Hide' : 'View'} Full Officer's Actions
+                            <ChevronDown className={cn("h-4 w-4 transition-transform", showFullOfficerActions && "rotate-180")} />
+                          </button>
+                          
+                          {showFullOfficerActions && (
+                            <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                              <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide font-semibold">
+                                Raw Officer's Actions from General Offense Hardcopy
+                              </p>
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                                {data.rawOfficerActions}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>

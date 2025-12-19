@@ -34,7 +34,7 @@ export interface IStorage {
   getActiveCases(): Promise<Case[]>;
   getCompletedCases(): Promise<Case[]>;
   updateCaseStatus(id: string, status: "processing" | "completed" | "flagged"): Promise<void>;
-  updateCaseSummary(id: string, summary: string, criminalHistorySummary?: string): Promise<void>;
+  updateCaseSummary(id: string, summary: string, criminalHistorySummary?: string, rawOfficerActions?: string): Promise<void>;
   updateCaseIdentity(id: string, defendantName: string | null, caseNumber: string | null): Promise<void>;
   updateCaseBookedIntoJail(id: string, bookedIntoJail: boolean | null): Promise<void>;
   updateCaseLegalAnalysis(id: string, caseSummaryNarrative: string, legalAnalysis: string): Promise<void>;
@@ -142,12 +142,16 @@ export class DatabaseStorage implements IStorage {
     logQuery('UPDATE', 'cases', start, { id, status });
   }
 
-  async updateCaseSummary(id: string, summary: string, criminalHistorySummary?: string): Promise<void> {
+  async updateCaseSummary(id: string, summary: string, criminalHistorySummary?: string, rawOfficerActions?: string): Promise<void> {
     const start = Date.now();
+    const updates: Record<string, string | undefined> = { summary, criminalHistorySummary };
+    if (rawOfficerActions !== undefined) {
+      updates.rawOfficerActions = rawOfficerActions;
+    }
     await db.update(cases)
-      .set({ summary, criminalHistorySummary })
+      .set(updates)
       .where(eq(cases.id, id));
-    logQuery('UPDATE', 'cases', start, { id, summaryLength: summary?.length });
+    logQuery('UPDATE', 'cases', start, { id, summaryLength: summary?.length, hasRawActions: !!rawOfficerActions });
   }
 
   async updateCaseIdentity(id: string, defendantName: string | null, caseNumber: string | null): Promise<void> {

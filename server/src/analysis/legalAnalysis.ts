@@ -207,3 +207,47 @@ export async function generateFullLegalAnalysis(
 
   return { caseSummaryNarrative, legalAnalysis };
 }
+
+/**
+ * Summarize the officer's actions from the General Offense Hardcopy section.
+ * Takes the raw extracted officer's actions text and creates a concise summary.
+ */
+export async function summarizeOfficerActions(
+  rawOfficerActions: string,
+  caseNumber: string
+): Promise<string> {
+  const ai = getGeminiClient();
+  if (!ai) {
+    return rawOfficerActions.slice(0, 300) + (rawOfficerActions.length > 300 ? '...' : '');
+  }
+
+  const startTime = Date.now();
+  try {
+    const prompt = `Summarize the following officer's actions from a police report in 2-3 concise sentences. Focus on:
+- What the officer observed or responded to
+- Key actions taken by the officer
+- The outcome (arrest, citation, etc.)
+
+Do NOT include any criminal history information.
+Do NOT include any legal conclusions or opinions.
+Write in past tense, professional language.
+
+OFFICER'S ACTIONS TEXT:
+${rawOfficerActions.slice(0, 4000)}
+
+SUMMARY:`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }]
+    });
+
+    const result = response.text?.trim() || rawOfficerActions.slice(0, 300);
+    logAI('summarizeOfficerActions', Date.now() - startTime, { caseNumber, resultLength: result.length });
+    return result;
+  } catch (error) {
+    logAI('summarizeOfficerActions', Date.now() - startTime, { caseNumber, error: true });
+    console.error('Error summarizing officer actions:', error instanceof Error ? error.message : String(error));
+    return rawOfficerActions.slice(0, 300) + (rawOfficerActions.length > 300 ? '...' : '');
+  }
+}

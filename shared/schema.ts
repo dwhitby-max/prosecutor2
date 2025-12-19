@@ -12,6 +12,7 @@ export const cases = pgTable("cases", {
   uploadDate: timestamp("upload_date").notNull().defaultNow(),
   status: text("status", { enum: ["processing", "completed", "flagged"] }).notNull().default("processing"),
   summary: text("summary"),
+  rawOfficerActions: text("raw_officer_actions"),
   criminalHistorySummary: text("criminal_history_summary"),
   isMarkedComplete: boolean("is_marked_complete").notNull().default(false),
   bookedIntoJail: boolean("booked_into_jail"),
