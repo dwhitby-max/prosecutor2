@@ -485,6 +485,29 @@ export default function AnalysisPage() {
                             : 'No case summary available. The AI analysis may not have run for this case.'}
                         </p>
                       )}
+                      
+                      {data.rawOfficerActions && (
+                        <div className="mt-6 pt-4 border-t">
+                          <button
+                            onClick={() => setShowFullOfficerActions(!showFullOfficerActions)}
+                            className="text-sm text-primary hover:text-primary/80 underline flex items-center gap-1 font-medium"
+                          >
+                            {showFullOfficerActions ? 'Hide' : 'View'} Full Officer's Actions
+                            <ChevronDown className={cn("h-4 w-4 transition-transform", showFullOfficerActions && "rotate-180")} />
+                          </button>
+                          
+                          {showFullOfficerActions && (
+                            <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                              <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide font-semibold">
+                                Officer's Actions from General Offense Hardcopy
+                              </p>
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                                {data.rawOfficerActions}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
