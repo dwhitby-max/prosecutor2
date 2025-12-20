@@ -10,14 +10,17 @@ import {
   type CaseImage,
   type InsertCaseImage,
   type CaseWithDetails,
+  type User,
+  type InsertUser,
   cases,
   documents,
   violations,
   criminalRecords,
-  caseImages
+  caseImages,
+  users
 } from "../shared/schema.js";
 import { db } from "./db";
-import { eq, desc, asc, inArray } from "drizzle-orm";
+import { eq, desc, asc, inArray, sql, gte, lte, and, count, avg } from "drizzle-orm";
 
 function logQuery(operation: string, table: string, startTime: number, details?: Record<string, unknown>): void {
   const duration = Date.now() - startTime;
@@ -67,7 +70,11 @@ export class DatabaseStorage implements IStorage {
     const start = Date.now();
     try {
       console.log('[createCase] Inserting with data:', JSON.stringify(data));
-      const [caseRecord] = await db.insert(cases).values(data).returning();
+      const dataWithProcessingStart = {
+        ...data,
+        processingStartedAt: new Date(),
+      };
+      const [caseRecord] = await db.insert(cases).values(dataWithProcessingStart).returning();
       logQuery('INSERT', 'cases', start, { caseNumber: data.caseNumber });
       return caseRecord;
     } catch (error) {
@@ -138,8 +145,27 @@ export class DatabaseStorage implements IStorage {
 
   async updateCaseStatus(id: string, status: "processing" | "completed" | "flagged"): Promise<void> {
     const start = Date.now();
-    await db.update(cases).set({ status }).where(eq(cases.id, id));
-    logQuery('UPDATE', 'cases', start, { id, status });
+    
+    if (status === 'completed') {
+      const [caseRecord] = await db.select({ processingStartedAt: cases.processingStartedAt }).from(cases).where(eq(cases.id, id));
+      const processingCompletedAt = new Date();
+      let processingTimeMs: number | null = null;
+      
+      if (caseRecord?.processingStartedAt) {
+        processingTimeMs = processingCompletedAt.getTime() - new Date(caseRecord.processingStartedAt).getTime();
+      }
+      
+      await db.update(cases).set({ 
+        status, 
+        processingCompletedAt,
+        processingTimeMs 
+      }).where(eq(cases.id, id));
+      
+      logQuery('UPDATE', 'cases', start, { id, status, processingTimeMs });
+    } else {
+      await db.update(cases).set({ status }).where(eq(cases.id, id));
+      logQuery('UPDATE', 'cases', start, { id, status });
+    }
   }
 
   async updateCaseSummary(id: string, summary: string, criminalHistorySummary?: string, rawOfficerActions?: string): Promise<void> {
@@ -268,6 +294,150 @@ export class DatabaseStorage implements IStorage {
     const result = await db.select().from(caseImages).where(eq(caseImages.caseId, caseId));
     logQuery('SELECT', 'caseImages', start, { caseId, count: result.length });
     return result;
+  }
+
+  // Admin methods
+  async getAllUsers(): Promise<User[]> {
+    const start = Date.now();
+    const result = await db.select().from(users).orderBy(desc(users.createdAt));
+    logQuery('SELECT', 'users', start, { count: result.length });
+    return result;
+  }
+
+  async createUser(data: InsertUser): Promise<User> {
+    const start = Date.now();
+    const [user] = await db.insert(users).values(data).returning();
+    logQuery('INSERT', 'users', start, { username: data.username });
+    return user;
+  }
+
+  async getOrCreateDefaultUser(): Promise<User> {
+    const start = Date.now();
+    const [existingUser] = await db.select().from(users).where(eq(users.username, 'default'));
+    if (existingUser) {
+      logQuery('SELECT', 'users', start, { username: 'default', found: true });
+      return existingUser;
+    }
+    const [newUser] = await db.insert(users).values({
+      username: 'default',
+      displayName: 'Default User',
+      role: 'analyst',
+    }).returning();
+    logQuery('INSERT', 'users', start, { username: 'default', created: true });
+    return newUser;
+  }
+
+  async getAdminStats(): Promise<{
+    totalCases: number;
+    totalUsers: number;
+    avgProcessingTimeMs: number | null;
+    casesProcessedToday: number;
+    casesProcessedThisWeek: number;
+    casesProcessedThisMonth: number;
+  }> {
+    const start = Date.now();
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(weekStart.getDate() - 7);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [totalCasesResult] = await db.select({ count: count() }).from(cases);
+    const [totalUsersResult] = await db.select({ count: count() }).from(users);
+    
+    const [avgTimeResult] = await db.select({ 
+      avgTime: avg(cases.processingTimeMs) 
+    }).from(cases).where(sql`${cases.processingTimeMs} IS NOT NULL`);
+    
+    const [todayResult] = await db.select({ count: count() }).from(cases)
+      .where(gte(cases.uploadDate, todayStart));
+    
+    const [weekResult] = await db.select({ count: count() }).from(cases)
+      .where(gte(cases.uploadDate, weekStart));
+    
+    const [monthResult] = await db.select({ count: count() }).from(cases)
+      .where(gte(cases.uploadDate, monthStart));
+
+    logQuery('SELECT', 'admin_stats', start, {});
+    
+    return {
+      totalCases: totalCasesResult?.count || 0,
+      totalUsers: totalUsersResult?.count || 0,
+      avgProcessingTimeMs: avgTimeResult?.avgTime ? Number(avgTimeResult.avgTime) : null,
+      casesProcessedToday: todayResult?.count || 0,
+      casesProcessedThisWeek: weekResult?.count || 0,
+      casesProcessedThisMonth: monthResult?.count || 0,
+    };
+  }
+
+  async getCasesByDateRange(startDate: Date, endDate: Date): Promise<Case[]> {
+    const start = Date.now();
+    const result = await db.select().from(cases)
+      .where(and(
+        gte(cases.uploadDate, startDate),
+        lte(cases.uploadDate, endDate)
+      ))
+      .orderBy(desc(cases.uploadDate));
+    logQuery('SELECT', 'cases', start, { startDate: startDate.toISOString(), endDate: endDate.toISOString(), count: result.length });
+    return result;
+  }
+
+  async getProcessingTimeReport(startDate?: Date, endDate?: Date): Promise<{
+    averageTimeMs: number | null;
+    minTimeMs: number | null;
+    maxTimeMs: number | null;
+    totalCases: number;
+    casesByDay: Array<{ date: string; count: number; avgTimeMs: number | null }>;
+  }> {
+    const start = Date.now();
+    
+    let query = db.select({
+      avgTime: avg(cases.processingTimeMs),
+      minTime: sql<number>`MIN(${cases.processingTimeMs})`,
+      maxTime: sql<number>`MAX(${cases.processingTimeMs})`,
+      totalCount: count(),
+    }).from(cases).where(sql`${cases.processingTimeMs} IS NOT NULL`);
+
+    if (startDate && endDate) {
+      query = db.select({
+        avgTime: avg(cases.processingTimeMs),
+        minTime: sql<number>`MIN(${cases.processingTimeMs})`,
+        maxTime: sql<number>`MAX(${cases.processingTimeMs})`,
+        totalCount: count(),
+      }).from(cases).where(and(
+        sql`${cases.processingTimeMs} IS NOT NULL`,
+        gte(cases.uploadDate, startDate),
+        lte(cases.uploadDate, endDate)
+      ));
+    }
+
+    const [stats] = await query;
+
+    const casesByDayQuery = await db.select({
+      date: sql<string>`DATE(${cases.uploadDate})`,
+      count: count(),
+      avgTimeMs: avg(cases.processingTimeMs),
+    }).from(cases)
+      .where(startDate && endDate 
+        ? and(gte(cases.uploadDate, startDate), lte(cases.uploadDate, endDate))
+        : sql`1=1`
+      )
+      .groupBy(sql`DATE(${cases.uploadDate})`)
+      .orderBy(sql`DATE(${cases.uploadDate})`);
+
+    logQuery('SELECT', 'processing_time_report', start, {});
+
+    return {
+      averageTimeMs: stats?.avgTime ? Number(stats.avgTime) : null,
+      minTimeMs: stats?.minTime || null,
+      maxTimeMs: stats?.maxTime || null,
+      totalCases: stats?.totalCount || 0,
+      casesByDay: casesByDayQuery.map(row => ({
+        date: String(row.date),
+        count: row.count,
+        avgTimeMs: row.avgTimeMs ? Number(row.avgTimeMs) : null,
+      })),
+    };
   }
 }
 

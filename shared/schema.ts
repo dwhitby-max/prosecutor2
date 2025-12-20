@@ -165,6 +165,8 @@ export const insertCaseImageSchema = createInsertSchema(caseImages).omit({
   createdAt: true,
 });
 
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = z.infer<typeof insertCaseSchema>;
 export type Document = typeof documents.$inferSelect;
