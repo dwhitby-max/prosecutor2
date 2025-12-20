@@ -180,3 +180,96 @@ export interface ApiErrorResponse {
 export type CasesListResponse = ApiResponse<{ cases: Case[] }>;
 export type CaseDetailResponse = ApiResponse<{ case: CaseWithDetails }>;
 export type UploadResponse = ApiResponse<{ caseIds: string[] }>;
+
+// Analysis result types for PDF processing (replacing any types)
+export interface AnalysisCitation {
+  raw: string;
+  normalizedKey: string;
+  jurisdiction: 'UT' | 'WVC' | 'UNKNOWN';
+}
+
+export interface AnalysisElementResult {
+  element: string;
+  evidenceSnippets: string[];
+  status: 'met' | 'not_met' | 'unclear';
+}
+
+export interface AnalysisElement {
+  code: string;
+  jurisdiction: 'UT' | 'WVC' | 'UNKNOWN';
+  result: {
+    overall: 'met' | 'not_met' | 'partial';
+    elements: AnalysisElementResult[];
+    notes: string[];
+  };
+}
+
+export interface AnalysisStatute {
+  code: string;
+  title: string | null;
+  text: string;
+  url: string | null;
+}
+
+export interface DocumentSummary {
+  pageCount: number;
+  textLength: number;
+  filename: string;
+}
+
+export interface ViolationToCreate {
+  caseId: string;
+  code: string;
+  chargeName: string | null;
+  chargeClass: string | null;
+  chargeType: 'current' | 'historical';
+  source: 'Utah State Code' | 'West Valley City Code';
+  description: string;
+  statuteText: string | null;
+  statuteUrl: string | null;
+  criteria: string[];
+  isViolated: boolean;
+  confidence: number;
+  reasoning: string;
+  evidence: string;
+}
+
+export interface PriorsCharge {
+  dateOfArrest: string | null;
+  chargeText: string;
+  offenseTrackingNumber: string | null;
+}
+
+export interface PriorsIncident {
+  incidentLabel: string;
+  charges: PriorsCharge[];
+}
+
+export interface PriorsSummary {
+  incidents: PriorsIncident[];
+  chargeCount: number;
+}
+
+export interface ExtractedImage {
+  mimeType: string;
+  imageData: string;
+  pageNumber: number | null;
+}
+
+export interface AnalysisDocumentSummary {
+  pageCount: number | null;
+  textLength: number;
+  imageCount: number;
+  ocrUsed: boolean;
+}
+
+export interface AnalysisResult {
+  documents: AnalysisDocumentSummary[];
+  citations: AnalysisCitation[];
+  narrative: string;
+  fullText: string;
+  statutes: AnalysisStatute[];
+  elements: AnalysisElement[];
+  priors: PriorsSummary | null;
+  extractedImages: ExtractedImage[];
+}

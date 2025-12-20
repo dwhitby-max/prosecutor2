@@ -9,11 +9,27 @@ import { extractPdfText } from './analysis/pdf.js';
 import { runAnalysis, extractCaseSynopsis, stripCriminalHistory } from './analysis/evaluate.js';
 import { lookupUtahCode, lookupWvcCode, isValidStatuteTextAny } from './analysis/statutes.js';
 import { generateFullLegalAnalysis, summarizeOfficerActions } from './analysis/legalAnalysis.js';
+import type { 
+  AnalysisCitation, 
+  AnalysisElement, 
+  AnalysisElementResult,
+  AnalysisStatute, 
+  AnalysisDocumentSummary,
+  ViolationToCreate,
+  AnalysisResult,
+  PriorsSummary,
+  ExtractedImage
+} from '../../shared/schema.js';
 
 interface ApiResponse<T = unknown> {
   ok: boolean;
   error?: string;
   data?: T;
+}
+
+interface HttpError extends Error {
+  status?: number;
+  statusCode?: number;
 }
 
 const app = express();
@@ -623,7 +639,7 @@ app.post('/api/cases/:id/reprocess', async (req, res) => {
     runAnalysis({ persist: true, pdfBuffers })
       .then(async (analysis) => {
         if (analysis && typeof analysis === 'object') {
-          const analysisObj = analysis as any;
+          const analysisObj = analysis as AnalysisResult;
           console.log('Reprocess analysis completed');
           
           const sanitize = (s: string): string => 
@@ -631,7 +647,7 @@ app.post('/api/cases/:id/reprocess', async (req, res) => {
           
           const rawNarrative = analysisObj.narrative || '';
           const narrative = sanitize(rawNarrative);
-          const docSummaries = analysisObj.documents as any[] || [];
+          const docSummaries: AnalysisDocumentSummary[] = analysisObj.documents || [];
           
           const readableChars = narrative.replace(/[^a-zA-Z0-9\s.,!?;:'"()-]/g, '').length;
           const isReadable = narrative.length > 0 && (readableChars / narrative.length) > 0.5;
@@ -640,28 +656,25 @@ app.post('/api/cases/:id/reprocess', async (req, res) => {
           if (isReadable && narrative.length > 50) {
             summary = sanitize(narrative.slice(0, 500)) + (narrative.length > 500 ? '...' : '');
           } else if (docSummaries.length > 0) {
-            const totalPages = docSummaries.reduce((acc: number, d: any) => acc + (d.pageCount || 0), 0);
-            const totalChars = docSummaries.reduce((acc: number, d: any) => acc + (d.textLength || 0), 0);
+            const totalPages = docSummaries.reduce((acc: number, d: AnalysisDocumentSummary) => acc + (d.pageCount || 0), 0);
+            const totalChars = docSummaries.reduce((acc: number, d: AnalysisDocumentSummary) => acc + (d.textLength || 0), 0);
             summary = `Analyzed ${docSummaries.length} document(s) with ${totalPages} page(s), ${totalChars} characters extracted.`;
           } else {
             summary = 'Document analysis complete. Awaiting manual review.';
           }
           
-          const priors = analysisObj.priors;
+          const priors: PriorsSummary | null = analysisObj.priors;
           let criminalHistorySummary = 'No prior offenses found in documents.';
-          if (priors && typeof priors === 'object' && 'incidents' in priors) {
-            const priorsObj = priors as any;
-            if (priorsObj.chargeCount > 0) {
-              const summaryParts: string[] = [];
-              for (const incident of (priorsObj.incidents || []).slice(0, 3)) {
-                for (const charge of (incident.charges || []).slice(0, 2)) {
-                  summaryParts.push(`${sanitize(charge.dateOfArrest || 'Unknown')}: ${sanitize(charge.chargeText?.slice(0, 60) || 'Unknown')}`);
-                  if (summaryParts.length >= 3) break;
-                }
+          if (priors && priors.chargeCount > 0) {
+            const summaryParts: string[] = [];
+            for (const incident of (priors.incidents || []).slice(0, 3)) {
+              for (const charge of (incident.charges || []).slice(0, 2)) {
+                summaryParts.push(`${sanitize(charge.dateOfArrest || 'Unknown')}: ${sanitize(charge.chargeText?.slice(0, 60) || 'Unknown')}`);
                 if (summaryParts.length >= 3) break;
               }
-              criminalHistorySummary = summaryParts.join('; ');
+              if (summaryParts.length >= 3) break;
             }
+            criminalHistorySummary = summaryParts.join('; ');
           }
           
           await storage.updateCaseSummary(caseId, sanitize(summary), sanitize(criminalHistorySummary));
@@ -950,7 +963,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
       runAnalysis({ persist: true, pdfBuffers: [pdfBytes] })
         .then(async (analysis) => {
           if (analysis && typeof analysis === 'object') {
-            const analysisObj = analysis as any;
+            const analysisObj = analysis as AnalysisResult;
             console.log('Analysis completed:', JSON.stringify(analysisObj, null, 2).slice(0, 1000));
 
             // Sanitize function to remove null bytes and non-printable chars
@@ -960,7 +973,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             // Build summary from Case Synopsis or Officer's Actions section ONLY
             const rawNarrative = analysisObj.narrative || '';
             const narrative = sanitize(rawNarrative);
-            const docSummaries = analysisObj.documents as any[] || [];
+            const docSummaries: AnalysisDocumentSummary[] = analysisObj.documents || [];
             const fullText = sanitize(analysisObj.fullText || '');
             
             // Check if narrative is mostly readable text (not binary garbage)
@@ -993,8 +1006,8 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                 summary = rawOfficerActions.slice(0, 300) + (rawOfficerActions.length > 300 ? '...' : '');
               }
             } else if (docSummaries.length > 0) {
-              const totalPages = docSummaries.reduce((acc: number, d: any) => acc + (d.pageCount || 0), 0);
-              const totalChars = docSummaries.reduce((acc: number, d: any) => acc + (d.textLength || 0), 0);
+              const totalPages = docSummaries.reduce((acc: number, d: AnalysisDocumentSummary) => acc + (d.pageCount || 0), 0);
+              const totalChars = docSummaries.reduce((acc: number, d: AnalysisDocumentSummary) => acc + (d.textLength || 0), 0);
               
               // Check if text extraction failed (scanned PDF without OCR)
               if (!isReadable && totalChars > 1000) {
@@ -1008,7 +1021,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
 
             // Criminal history summary will be built from clean structured records later
             // (after recordsToCreate is populated) - not from raw priors object
-            const priors = analysisObj.priors;
+            const priors: PriorsSummary | null = analysisObj.priors;
             let criminalHistorySummaryDefault = !isReadable 
               ? 'Unable to extract criminal history from scanned document. OCR required.'
               : 'No prior offenses found in documents.';
@@ -1046,15 +1059,15 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             console.log('Extracted screening charges:', screeningCharges.length, 'charges from fullText');
             
             // Map citations to violations with statute text
-            const citations = analysisObj.citations as any[] || [];
-            const elements = analysisObj.elements as any[] || [];
-            const statutes = analysisObj.statutes as any[] || [];
-            const violationsToCreate: any[] = [];
+            const citations: AnalysisCitation[] = analysisObj.citations || [];
+            const elements: AnalysisElement[] = analysisObj.elements || [];
+            const statutes: AnalysisStatute[] = analysisObj.statutes || [];
+            const violationsToCreate: ViolationToCreate[] = [];
             
             // Create a map of code to statute for quick lookup
             const statuteMap = new Map<string, string>();
-            const statuteUrlMap = new Map<string, string>();
-            const statuteTitleMap = new Map<string, string>();
+            const statuteUrlMap = new Map<string, string | null>();
+            const statuteTitleMap = new Map<string, string | null>();
             for (const st of statutes) {
               if (st && st.code && st.text) {
                 statuteMap.set(st.code, st.text);
@@ -1069,15 +1082,15 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             
             // Match screening charges with statute analysis
             for (const charge of screeningCharges) {
-              const matchingElement = elements.find((el: any) => 
+              const matchingElement = elements.find((el: AnalysisElement) => 
                 el.code && (el.code === charge.code || el.code.includes(charge.code) || charge.code.includes(el.code))
               );
               
               const statuteText = statuteMap.get(charge.code) || null;
               const statuteUrlVal = statuteUrlMap.get(charge.code) || null;
-              const result = matchingElement?.result || {};
-              const elems = result.elements || [];
-              const overallMet = result.overall === 'met';
+              const result = matchingElement?.result;
+              const elems: AnalysisElementResult[] = result?.elements || [];
+              const overallMet = result?.overall === 'met';
               
               violationsToCreate.push({
                 caseId: newCase.id,
@@ -1089,11 +1102,11 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                 description: matchingElement ? 'Automated element analysis' : 'Charge extracted from screening sheet',
                 statuteText: statuteText ? sanitize(statuteText.slice(0, 2000)) : null,
                 statuteUrl: statuteUrlVal,
-                criteria: elems.length > 0 ? elems.map((e: any) => e.element || 'Element').slice(0, 5) : ['Manual review required'],
+                criteria: elems.length > 0 ? elems.map((e: AnalysisElementResult) => e.element || 'Element').slice(0, 5) : ['Manual review required'],
                 isViolated: overallMet,
                 confidence: overallMet ? 0.8 : (matchingElement ? 0.5 : 0.3),
-                reasoning: result.notes?.join(' ') || 'Review case synopsis against statute elements',
-                evidence: elems.slice(0, 2).map((e: any) => e.evidenceSnippets?.join(' ') || '').join(' | ') || 'See case synopsis',
+                reasoning: result?.notes?.join(' ') || 'Review case synopsis against statute elements',
+                evidence: elems.slice(0, 2).map((e: AnalysisElementResult) => e.evidenceSnippets?.join(' ') || '').join(' | ') || 'See case synopsis',
               });
             }
             
@@ -1101,8 +1114,8 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             // Note: These may include criminal history citations, so mark as historical since we can't reliably distinguish
             if (violationsToCreate.length === 0 && elements.length > 0) {
               for (const el of elements) {
-                const result = el.result || {};
-                const elems = result.elements || [];
+                const result = el.result;
+                const elems: AnalysisElementResult[] = result?.elements || [];
                 const statuteText = statuteMap.get(el.code) || null;
                 const statuteUrlEl = statuteUrlMap.get(el.code) || null;
                 const statuteTitle = statuteTitleMap.get(el.code) || null;
@@ -1117,11 +1130,11 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                   description: 'Element analysis (fallback - no charge table found)',
                   statuteText: statuteText ? sanitize(statuteText.slice(0, 2000)) : null,
                   statuteUrl: statuteUrlEl,
-                  criteria: elems.length > 0 ? elems.map((e: any) => e.element).slice(0, 5) : ['Requires manual review'],
-                  isViolated: result.overall === 'met',
-                  confidence: result.overall === 'met' ? 0.8 : 0.4,
-                  reasoning: result.notes?.join(' ') || 'Automated screening analysis - manual review recommended',
-                  evidence: elems.slice(0, 2).map((e: any) => e.evidenceSnippets?.join(' ') || '').join(' | ') || 'See original document for details',
+                  criteria: elems.length > 0 ? elems.map((e: AnalysisElementResult) => e.element).slice(0, 5) : ['Requires manual review'],
+                  isViolated: result?.overall === 'met',
+                  confidence: result?.overall === 'met' ? 0.8 : 0.4,
+                  reasoning: result?.notes?.join(' ') || 'Automated screening analysis - manual review recommended',
+                  evidence: elems.slice(0, 2).map((e: AnalysisElementResult) => e.evidenceSnippets?.join(' ') || '').join(' | ') || 'See original document for details',
                 });
               }
             }
@@ -1165,9 +1178,8 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
               jurisdiction: string;
             }> = [];
             
-            if (priors && typeof priors === 'object' && 'incidents' in priors) {
-              const priorsObj = priors as { incidents: Array<{ incidentLabel: string; charges: Array<{ dateOfArrest: string | null; chargeText: string; offenseTrackingNumber: string | null }> }> };
-              for (const incident of priorsObj.incidents || []) {
+            if (priors && priors.incidents) {
+              for (const incident of priors.incidents) {
                 for (const charge of incident.charges || []) {
                   recordsToCreate.push({
                     caseId: newCase.id,
@@ -1177,17 +1189,6 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
                     jurisdiction: 'Utah',
                   });
                 }
-              }
-            } else if (Array.isArray(priors)) {
-              // Fallback for array format
-              for (const p of priors) {
-                recordsToCreate.push({
-                  caseId: newCase.id,
-                  date: p.date || p.dateOfArrest || 'Unknown',
-                  offense: p.offense || p.charge || p.chargeText || 'Unknown',
-                  disposition: p.disposition || 'See record',
-                  jurisdiction: p.jurisdiction || p.court || 'Utah',
-                });
               }
             }
 
@@ -1214,7 +1215,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             await storage.updateCaseSummary(newCase.id, sanitize(summary), sanitize(finalCriminalHistorySummary), rawOfficerActions || undefined);
 
             // Save extracted images from PDFs
-            const extractedImages = analysisObj.extractedImages as Array<{ mimeType: string; imageData: string; pageNumber: number | null }> || [];
+            const extractedImages: ExtractedImage[] = analysisObj.extractedImages || [];
             if (extractedImages.length > 0) {
               const imagesToCreate = extractedImages.slice(0, 20).map((img, idx) => ({
                 caseId: newCase.id,
