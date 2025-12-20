@@ -987,7 +987,8 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
             
             if (extractedSynopsis) {
               // Store raw officer actions for "view full content" link
-              rawOfficerActions = sanitize(extractedSynopsis);
+              // Apply stripCriminalHistory explicitly to ensure no criminal history leaks through
+              rawOfficerActions = stripCriminalHistory(sanitize(extractedSynopsis));
               // Generate AI summary of officer's actions
               try {
                 summary = await summarizeOfficerActions(rawOfficerActions, newCase.caseNumber);
@@ -997,8 +998,7 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
               }
             } else if (isReadable && narrative.length > 50) {
               // Fallback: use narrative but strip criminal history mentions
-              const cleanedNarrative = stripCriminalHistory(narrative);
-              rawOfficerActions = sanitize(cleanedNarrative);
+              rawOfficerActions = stripCriminalHistory(sanitize(narrative));
               try {
                 summary = await summarizeOfficerActions(rawOfficerActions, newCase.caseNumber);
               } catch (err) {

@@ -54,15 +54,39 @@ export function stripCriminalHistory(text: string): string {
   
   let result = text;
   
-  // Remove "Criminal History:" section up to next major section header or end
-  // This stops at common section headers to avoid removing officer's actions
-  result = result.replace(
-    /Criminal\s+History\s*[:]\s*[\s\S]*?(?=(?:OFFICER[''\u2019]?S\s+ACTIONS|EVIDENCE|WITNESSES|ADDITIONAL\s+INFO|PROPERTY|VEHICLES?|SUSPECTS?|VICTIMS?|NARRATIVE|CASE\s+STATUS|$))/gi, 
-    ''
-  );
+  // Common section headers that should stop criminal history removal
+  const sectionBoundary = '(?:OFFICER[\'\'\\u2019]?S\\s+ACTIONS|EVIDENCE|WITNESSES|ADDITIONAL\\s+INFO|PROPERTY|VEHICLES?|SUSPECTS?|VICTIMS?|NARRATIVE|CASE\\s+STATUS|SYNOPSIS|SUMMARY|INCIDENT|REPORT|$)';
+  
+  // Remove various criminal history section headers and their content
+  // These patterns match section headers at line start, with or without colon/dash
+  // The key is the header must be followed by a newline (not continue as inline sentence)
+  const criminalHistoryPatterns = [
+    // Standard criminal history headers - with colon/dash OR bare header followed by newline
+    new RegExp(`(?:^|\\n)\\s*Criminal\\s+History\\s*[:\\-–]?\\s*\\n[\\s\\S]*?(?=${sectionBoundary})`, 'gi'),
+    // Adult Criminal History variants
+    new RegExp(`(?:^|\\n)\\s*Adult\\s+Criminal\\s+History\\s*[:\\-–]?\\s*\\n[\\s\\S]*?(?=${sectionBoundary})`, 'gi'),
+    // Criminal History Summary
+    new RegExp(`(?:^|\\n)\\s*Criminal\\s+History\\s+Summary\\s*[:\\-–]?\\s*\\n[\\s\\S]*?(?=${sectionBoundary})`, 'gi'),
+    // Prior Arrest History
+    new RegExp(`(?:^|\\n)\\s*Prior\\s+Arrest\\s+History\\s*[:\\-–]?\\s*\\n[\\s\\S]*?(?=${sectionBoundary})`, 'gi'),
+    // Priors section - with colon/dash OR bare header
+    new RegExp(`(?:^|\\n)\\s*Priors?\\s*[:\\-–]?\\s*\\n[\\s\\S]*?(?=${sectionBoundary})`, 'gi'),
+    // Utah BCI section (must be header, not inline reference)
+    new RegExp(`(?:^|\\n)\\s*Utah\\s+BCI\\s*[:\\-–]?\\s*\\n[\\s\\S]*?(?=${sectionBoundary})`, 'gi'),
+    // NCIC section (must be header on own line)
+    new RegExp(`(?:^|\\n)\\s*NCIC\\s*[:\\-–]?\\s*\\n[\\s\\S]*?(?=${sectionBoundary})`, 'gi'),
+    // Adult Criminal History (UTAH BCI) variant
+    new RegExp(`(?:^|\\n)\\s*Adult\\s+Criminal\\s+History\\s*\\(Utah\\s+BCI\\)\\s*[:\\-–]?\\s*\\n[\\s\\S]*?(?=${sectionBoundary})`, 'gi'),
+  ];
+  
+  for (const pattern of criminalHistoryPatterns) {
+    result = result.replace(pattern, '');
+  }
   
   // Remove inline criminal history references (single line only)
   result = result.replace(/^.*Criminal\s+History\s*[-–:].*$/gim, '');
+  result = result.replace(/^.*Adult\s+Criminal\s+History.*$/gim, '');
+  result = result.replace(/^.*Prior\s+Arrest\s+History.*$/gim, '');
   
   // Remove arrest/conviction count patterns (single line only)
   result = result.replace(/^\s*\d+\s+arrests?\.?\s*Convictions?:.*$/gim, '');
@@ -71,26 +95,114 @@ export function stripCriminalHistory(text: string): string {
   // Remove "(+N more records)" patterns
   result = result.replace(/\(\+\d+\s+more\s+records?\)/gi, '');
   
-  // Remove Utah BCI section (up to next section header or end, not everything)
-  result = result.replace(
-    /Utah\s+BCI[\s\S]*?(?=(?:OFFICER[''\u2019]?S\s+ACTIONS|EVIDENCE|WITNESSES|NARRATIVE|$))/gi, 
-    ''
-  );
-  
-  // Remove NCIC section similarly
-  result = result.replace(
-    /NCIC[\s\S]*?(?=(?:OFFICER[''\u2019]?S\s+ACTIONS|EVIDENCE|WITNESSES|NARRATIVE|$))/gi, 
-    ''
-  );
-  
   // Remove lines that look like criminal record entries (DATE: OFFENSE pattern)
   result = result.replace(/^\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*:\s*[A-Z][A-Z\s\/]+;?\s*$/gim, '');
   
   // Remove common prior offense keywords at start of lines
   result = result.replace(/^\s*(?:Prior\s+(?:offenses?|arrests?|convictions?)|Past\s+criminal|Criminal\s+record).*$/gim, '');
   
+  // Remove sentences mentioning prior arrests/convictions/history (line-based)
+  result = result.replace(/^.*(?:has|had)\s+(?:prior|previous)\s+(?:arrests?|convictions?|history).*$/gim, '');
+  result = result.replace(/^.*(?:defendant|subject|suspect)\s+(?:has|had)\s+(?:a\s+)?criminal\s+(?:history|record|background).*$/gim, '');
+  
+  // Sentence-level filtering: remove sentences with criminal history keywords
+  // AND remove standalone prior offense references (crime + year patterns)
+  
+  // Keywords that indicate criminal history content
+  const criminalHistoryKeywords = [
+    /\bpriors?\b/i,
+    /\bprior\s+\w+/i,
+    /\bprevious\s+(?:arrest|conviction|charge|offense)/i,
+    /\bcriminal\s+(?:history|record|background)/i,
+    /\b(?:arrest|conviction)\s+(?:history|record)/i,
+    /\bhistory\s+of\s+(?:arrest|conviction|offense)/i,
+    /\bBCI\b/i,
+    /\bNCIC\b/i,
+    /\bUtah\s+BCI\b/i,
+    /\brecord\s+check\b/i,
+    /\bwarrants?\s+check\b/i,
+    /\b(?:two|three|four|five|six|seven|eight|nine|ten|several|multiple|numerous)\s+(?:prior|priors|arrest|conviction)/i,
+    /\bhas\s+(?:a\s+)?(?:prior|priors|previous)/i,
+    /\b(?:subject|defendant|suspect|individual|person|he|she)\s+has\s+(?:prior|priors|a\s+criminal)/i,
+    /\bhistory\s+shows\b/i,
+    /\brecord\s+shows\b/i,
+    /\bpast\s+(?:arrest|conviction|offense|charge)/i,
+  ];
+  
+  // Prior offense patterns - detect standalone references to past crimes
+  // Patterns handle optional leading punctuation (bullets, dashes) and inline entries
+  const priorOffensePatterns = [
+    /\b\d{4}\s+(?:charge|arrest|conviction|case)\b/i, // "2022 charge"
+    /\b(?:charge|case|arrest|conviction)\s+(?:was\s+)?(?:dismissed|dropped|reduced|pled|pleaded|guilty|convicted|acquitted)\b/i,
+    /\b(?:convicted|arrested|charged)\s+(?:for|of|in|on)\s+\d{4}\b/i,
+    /\b(?:felony|misdemeanor)\s+(?:charge|conviction|arrest)\b/i,
+    /\b\d{4}\s+(?:felony|misdemeanor)\b/i, // "2019 felony"
+    /^[A-Z][a-z]+\s+\d{4}\.?$/m, // Mixed case like "Burglary 2022" or "DUI 2019"
+    /^[A-Z][A-Z\s\/-]+\s*[-–]?\s*\d{4}\.?$/m, // Uppercase like "THEFT 2020", "BURGLARY – 2018", "DUI/DWI 2019"
+    /^[A-Z][A-Z\s\/-]+\d{4}\.?$/m, // No space before year: "THEFT2020"
+    /\b(?:Violation\s+of\s+)?(?:Protective\s+Order|Restraining\s+Order)\s+\d{4}\b/i, // Utah-specific
+    /\b\d{4}\s+(?:was\s+)?(?:dismissed|dropped|reduced|acquitted)\b/i, // "2017 was dismissed"
+    // Generic bullet/dash prefixed entries: any capitalized phrase + year (with or without parentheses)
+    /^[-–•*]\s*[A-Z][A-Za-z\s]+\(?(?:19|20)\d{2}\)?/m, // "- Sexual Abuse 2014", "• Aggravated Kidnapping (2016)"
+    /^[-–•*]\s*[A-Z][A-Z\s]+\(?(?:19|20)\d{2}\)?/m, // "- RAPE 2010", "• ASSAULT (2018)"
+    // Known offense types with year in parentheses or followed by case number
+    /\b(?:Theft|Burglary|Robbery|Assault|Battery|DUI|DWI|Possession|Forgery|Fraud|Larceny|Rape|Kidnapping|Murder|Manslaughter|Arson|Sexual\s+Abuse|Aggravated\s+\w+|Domestic\s+Violence)\s*\(?\d{4}\)?/i,
+    // Felony/misdemeanor with class and year: "3rd Degree Felony (2018)"
+    /\b(?:1st|2nd|3rd|4th)\s+Degree\s+(?:Felony|Misdemeanor)\s*\(?\d{4}\)?/i,
+    // Case number patterns only when preceded by prior/history context: "prior case 2019-12345"
+    /\b(?:prior|previous|past|old)\s+case\s+\d{4}[-–]\d+/i,
+    // Prior offenses phrase with parenthetical years (specific context)
+    /\b(?:prior\s+)?(?:offenses?|charges?|convictions?|arrests?)\s+(?:include|:\s*)[^.]*\(\d{4}\)/i,
+  ];
+  
+  const containsCriminalHistory = (text: string): boolean => {
+    return criminalHistoryKeywords.some(pattern => pattern.test(text));
+  };
+  
+  const isPriorOffenseReference = (text: string): boolean => {
+    return priorOffensePatterns.some(pattern => pattern.test(text));
+  };
+  
+  // First pass: split into lines and remove lines that look like prior offense lists
+  const lines = result.split('\n');
+  const filteredLines = lines.filter(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return true; // Keep empty lines for now
+    // Remove short lines that look like standalone crime references
+    if (trimmed.length < 50 && isPriorOffenseReference(trimmed)) {
+      return false;
+    }
+    return true;
+  });
+  result = filteredLines.join('\n');
+  
+  // Second pass: split into sentences and filter
+  const sentences = result.split(/(?<=[.!?])\s+/);
+  const filteredSentences: string[] = [];
+  
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+    
+    // Skip sentences with criminal history keywords
+    if (containsCriminalHistory(trimmed)) {
+      continue;
+    }
+    
+    // Skip sentences that are prior offense references
+    if (isPriorOffenseReference(trimmed)) {
+      continue;
+    }
+    
+    filteredSentences.push(trimmed);
+  }
+  result = filteredSentences.join(' ');
+  
   // Clean up multiple blank lines left behind
   result = result.replace(/\n{3,}/g, '\n\n');
+  
+  // Clean up multiple spaces left behind
+  result = result.replace(/  +/g, ' ');
   
   return result.trim();
 }
