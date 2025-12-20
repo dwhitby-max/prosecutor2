@@ -36,6 +36,7 @@ type CaseDetail = {
   uploadDate: string;
   status: string;
   summary: string | null;
+  rawOfficerActions: string | null;
   criminalHistorySummary: string | null;
   documents: Array<{ id: string; filename: string; uploadPath: string | null }>;
   violations: ViolationType[];
@@ -62,6 +63,7 @@ export function App() {
   const [detail, setDetail] = useState<CaseDetailResp | null>(null);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [showFullOfficerActions, setShowFullOfficerActions] = useState(false);
 
   async function loadCases(filter: 'active' | 'completed' = folder) {
     const r = await fetch(`/api/cases?filter=${filter}`);
@@ -271,8 +273,40 @@ export function App() {
                   <div><strong>Status:</strong> {detail.case.status}</div>
                   {detail.case.summary && (
                     <div style={{ marginTop: 8 }}>
-                      <strong>Summary:</strong>
+                      <strong>AI-Generated Summary:</strong>
                       <p style={{ margin: '4px 0' }}>{detail.case.summary}</p>
+                    </div>
+                  )}
+                  {detail.case.rawOfficerActions && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #ddd' }}>
+                      <button
+                        onClick={() => setShowFullOfficerActions(!showFullOfficerActions)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#007bff',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: 0,
+                          fontSize: 14,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        {showFullOfficerActions ? 'Hide' : 'View'} Full Officer's Actions
+                        <span style={{ transform: showFullOfficerActions ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+                      </button>
+                      {showFullOfficerActions && (
+                        <div style={{ marginTop: 12, padding: 12, background: '#e9ecef', borderRadius: 6 }}>
+                          <div style={{ fontSize: 11, color: '#666', textTransform: 'uppercase', marginBottom: 8, fontWeight: 600 }}>
+                            Officer's Actions from General Offense Hardcopy
+                          </div>
+                          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                            {detail.case.rawOfficerActions}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                   {detail.case.criminalHistorySummary && (
