@@ -1277,6 +1277,62 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
   }
 });
 
+// Admin API endpoints
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const stats = await storage.getAdminStats();
+    res.json({ ok: true, data: stats });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    console.error('Admin stats error:', msg);
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const users = await storage.getAllUsers();
+    res.json({ ok: true, data: { users } });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    console.error('Admin users error:', msg);
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+
+app.get('/api/admin/processing-report', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const start = startDate ? new Date(startDate as string) : undefined;
+    const end = endDate ? new Date(endDate as string) : undefined;
+    const report = await storage.getProcessingTimeReport(start, end);
+    res.json({ ok: true, data: report });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    console.error('Processing report error:', msg);
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+
+app.get('/api/admin/cases-by-date', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+      res.status(400).json({ ok: false, error: 'startDate and endDate are required' });
+      return;
+    }
+    const cases = await storage.getCasesByDateRange(
+      new Date(startDate as string),
+      new Date(endDate as string)
+    );
+    res.json({ ok: true, data: { cases } });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    console.error('Cases by date error:', msg);
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+
 // Serve client build if present
 const clientDist = path.join(process.cwd(), '..', 'client', 'dist');
 if (fs.existsSync(clientDist)) {

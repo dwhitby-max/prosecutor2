@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, UploadCloud, FileText, Settings, ShieldAlert, Scale } from "lucide-react";
+import { LayoutDashboard, UploadCloud, FileText, Settings, ShieldAlert, Scale, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Sidebar() {
@@ -9,6 +9,7 @@ export function Sidebar() {
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/upload", label: "New Analysis", icon: UploadCloud },
     { href: "/cases", label: "Case Archives", icon: FileText },
+    { href: "/admin", label: "Admin", icon: Users },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
 
