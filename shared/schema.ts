@@ -180,3 +180,82 @@ export interface ApiErrorResponse {
 export type CasesListResponse = ApiResponse<{ cases: Case[] }>;
 export type CaseDetailResponse = ApiResponse<{ case: CaseWithDetails }>;
 export type UploadResponse = ApiResponse<{ caseIds: string[] }>;
+
+// Analysis Types - Used in PDF processing pipeline (replaces 'any' types for type safety)
+export interface DocumentSummary {
+  pageCount: number;
+  textLength: number;
+  filename?: string;
+}
+
+export interface ElementResult {
+  element: string;
+  evidenceSnippets?: string[];
+  met?: boolean;
+}
+
+export interface AnalysisElementResult {
+  elements?: ElementResult[];
+  overall?: 'met' | 'not_met' | 'unknown';
+  notes?: string[];
+}
+
+export interface AnalysisElement {
+  code: string;
+  jurisdiction?: 'UT' | 'WVC';
+  result?: AnalysisElementResult;
+}
+
+export interface AnalysisCitation {
+  raw?: string;
+  normalizedKey?: string;
+  jurisdiction?: 'UT' | 'WVC';
+}
+
+export interface AnalysisStatute {
+  code: string;
+  text?: string;
+  url?: string;
+  title?: string;
+}
+
+export interface PriorsCharge {
+  dateOfArrest?: string;
+  chargeText?: string;
+}
+
+export interface PriorsIncident {
+  charges?: PriorsCharge[];
+}
+
+export interface PriorsSummary {
+  chargeCount?: number;
+  incidents?: PriorsIncident[];
+}
+
+export interface AnalysisResultObj {
+  narrative?: string;
+  documents?: DocumentSummary[];
+  citations?: AnalysisCitation[];
+  elements?: AnalysisElement[];
+  statutes?: AnalysisStatute[];
+  priors?: PriorsSummary;
+  fullText?: string;
+}
+
+export interface ViolationCreateData {
+  caseId: string;
+  code: string;
+  chargeName: string | null;
+  chargeClass: string | null;
+  chargeType: 'current' | 'historical';
+  source: 'Utah State Code' | 'West Valley City Code';
+  description: string;
+  statuteText: string | null;
+  statuteUrl: string | null;
+  criteria: string[];
+  isViolated: boolean;
+  confidence: number;
+  reasoning: string;
+  evidence: string;
+}
