@@ -688,13 +688,6 @@ export default function AnalysisPage() {
                                   <p className="text-sm text-foreground">{violation.reasoning || 'No detailed analysis available.'}</p>
                                 </div>
                                 
-                                {violation.evidence && violation.evidence !== 'See case synopsis' && (
-                                  <div>
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Supporting Evidence</p>
-                                    <p className="text-sm text-muted-foreground italic">"{violation.evidence}"</p>
-                                  </div>
-                                )}
-                                
                                 <div className="flex items-center gap-2 pt-2 border-t">
                                   <p className="text-xs text-muted-foreground">Confidence:</p>
                                   <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
