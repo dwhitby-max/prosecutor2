@@ -857,7 +857,15 @@ app.get('/api/cases/:id', async (req, res) => {
       console.log(`  [V${i}] ${v.code}: hasStatuteText=${hasText}, hasStatuteUrl=${hasUrl}, preview="${preview}..."`);
     });
 
-    res.json({ ok: true, case: caseData });
+    // Strip criminal history from summary fields before returning to frontend
+    const cleanedCaseData = {
+      ...caseData,
+      summary: caseData.summary ? stripCriminalHistory(caseData.summary) : caseData.summary,
+      caseSummaryNarrative: caseData.caseSummaryNarrative ? stripCriminalHistory(caseData.caseSummaryNarrative) : caseData.caseSummaryNarrative,
+      rawOfficerActions: caseData.rawOfficerActions ? stripCriminalHistory(caseData.rawOfficerActions) : caseData.rawOfficerActions,
+    };
+
+    res.json({ ok: true, case: cleanedCaseData });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     res.status(500).json({ ok: false, error: msg });

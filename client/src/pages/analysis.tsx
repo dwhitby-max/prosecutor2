@@ -615,10 +615,6 @@ export default function AnalysisPage() {
                               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Reasoning</p>
                               <p className="text-sm text-foreground">{violation.reasoning}</p>
                             </div>
-                            <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
-                              <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide mb-1">Evidence from Case</p>
-                              <p className="text-sm text-amber-800 italic">"{violation.evidence}"</p>
-                            </div>
                           </AccordionContent>
                         </AccordionItem>
                       ))}
