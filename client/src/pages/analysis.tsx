@@ -97,6 +97,12 @@ type CaseImage = {
   pageNumber: number | null;
 };
 
+type CaseDocument = {
+  id: string;
+  filename: string;
+  uploadPath: string | null;
+};
+
 type CaseData = {
   id: string;
   caseNumber: string;
@@ -113,6 +119,7 @@ type CaseData = {
   violations: Violation[];
   criminalRecords: CriminalRecord[];
   images: CaseImage[];
+  documents: CaseDocument[];
 };
 
 export default function AnalysisPage() {
@@ -423,7 +430,7 @@ export default function AnalysisPage() {
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                  <div className="grid grid-cols-3 gap-4 pt-4 border-t">
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Booked Into Jail</p>
                       <Badge 
@@ -443,6 +450,31 @@ export default function AnalysisPage() {
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Current Charges</p>
                       <p className="text-sm font-medium">{currentViolations.length} charge(s)</p>
                     </div>
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Case Documents</p>
+                      {data.documents && data.documents.length > 0 ? (
+                        <div className="flex flex-col gap-1">
+                          {data.documents.map((doc) => (
+                            doc.uploadPath ? (
+                              <a 
+                                key={doc.id}
+                                href={doc.uploadPath}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-primary hover:underline flex items-center gap-1"
+                              >
+                                <FileText className="h-3 w-3" />
+                                {doc.filename}
+                              </a>
+                            ) : (
+                              <span key={doc.id} className="text-sm text-muted-foreground">{doc.filename}</span>
+                            )
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">No documents</span>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -455,8 +487,8 @@ export default function AnalysisPage() {
                   <TabsTrigger value="legal-analysis" className="gap-2" data-testid="tab-legal-analysis">
                     <Scale className="h-4 w-4" /> Legal Analysis
                   </TabsTrigger>
-                  <TabsTrigger value="charges" className="gap-2" data-testid="tab-charges">
-                    <AlertTriangle className="h-4 w-4" /> Charges
+                  <TabsTrigger value="state-code" className="gap-2" data-testid="tab-state-code">
+                    <Scale className="h-4 w-4" /> State Code
                   </TabsTrigger>
                   <TabsTrigger value="synopsis" className="gap-2" data-testid="tab-synopsis">
                     <User className="h-4 w-4" /> Analysis Summary
@@ -467,6 +499,33 @@ export default function AnalysisPage() {
                 </TabsList>
 
                 <TabsContent value="case-summary" className="space-y-4">
+                  {currentViolations.length > 0 && (
+                    <Card>
+                      <CardContent className="p-6">
+                        <h3 className="text-lg font-serif font-bold text-primary mb-4 flex items-center gap-2">
+                          <AlertTriangle className="h-5 w-5" /> Current Case Charges ({currentViolations.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {currentViolations.map((v) => (
+                            <div key={v.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <span className="font-mono text-sm font-semibold text-primary">{v.code}</span>
+                                {v.chargeName && (
+                                  <span className="text-sm text-foreground">{v.chargeName}</span>
+                                )}
+                              </div>
+                              {v.chargeClass && (
+                                <Badge variant="outline" className="text-xs">
+                                  {v.chargeClass}
+                                </Badge>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  
                   <Card>
                     <CardContent className="p-6">
                       <h3 className="text-lg font-serif font-bold text-primary mb-4 flex items-center gap-2">
@@ -497,13 +556,13 @@ export default function AnalysisPage() {
                           </button>
                           
                           {showFullOfficerActions && (
-                            <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                            <div className="mt-4 p-4 bg-muted/50 rounded-lg overflow-auto">
                               <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide font-semibold">
                                 Officer's Actions from General Offense Hardcopy
                               </p>
-                              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                              <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                                 {data.rawOfficerActions}
-                              </p>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -544,195 +603,40 @@ export default function AnalysisPage() {
                   </Card>
                 </TabsContent>
 
-                <TabsContent value="charges" className="space-y-4">
+                <TabsContent value="state-code" className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-serif font-bold text-primary">
-                      Current Case Charges ({currentViolations.length})
+                      Applicable Utah State Code
                     </h3>
                   </div>
 
                   {currentViolations.length === 0 ? (
                     <Card>
                       <CardContent className="p-8 text-center text-muted-foreground">
-                        No charges detected in this case. Please review the case synopsis for details.
+                        No charges detected. State code will be shown when charges are identified.
                       </CardContent>
                     </Card>
                   ) : (
-                    <>
-                    <Accordion type="multiple" className="space-y-3">
+                    <div className="space-y-4">
                       {currentViolations.map((violation, idx) => (
-                        <AccordionItem 
-                          key={violation.id} 
-                          value={violation.id}
-                          className="border rounded-lg px-4 bg-card"
-                          data-testid={`charge-item-${idx}`}
-                        >
-                          <AccordionTrigger className="hover:no-underline py-3">
-                            <div className="flex items-start gap-4 flex-1">
-                              <div className={cn(
-                                "flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs",
-                                violation.isViolated ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-                              )}>
-                                {idx + 1}
-                              </div>
-                              <div className="flex-1 text-left">
-                                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                  <span className="font-bold text-foreground">{violation.code}</span>
-                                  {violation.chargeName && (
-                                    <span className="text-sm text-muted-foreground">- {violation.chargeName}</span>
-                                  )}
-                                  {violation.chargeClass && (
-                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-purple-50 text-purple-700 border-purple-200">
-                                      {violation.chargeClass}
-                                    </Badge>
-                                  )}
-                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                                    {violation.source}
-                                  </Badge>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge 
-                                    variant="outline" 
-                                    className={cn(
-                                      "text-[10px]",
-                                      violation.isViolated 
-                                        ? "bg-red-50 text-red-700 border-red-200" 
-                                        : "bg-amber-50 text-amber-700 border-amber-200"
-                                    )}
-                                  >
-                                    {violation.isViolated ? 'Burden Met' : 'Needs Review'}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">
-                                    {Math.round(violation.confidence * 100)}% Confidence
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </AccordionTrigger>
-                          <AccordionContent className="pt-4 pb-4 space-y-4">
-                            {violation.statuteText && (
-                              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                                <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide flex items-center gap-1 mb-1">
-                                  <Building className="h-3 w-3" /> Statute Text
-                                </p>
-                                <p className="text-sm text-blue-800 whitespace-pre-wrap">{violation.statuteText}</p>
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Analysis</p>
-                              <p className="text-sm text-foreground">{violation.description}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Elements Evaluated</p>
-                              <ul className="space-y-1.5">
-                                {violation.criteria.map((criterion, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-sm">
-                                    <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                                    <span>{criterion}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Reasoning</p>
-                              <p className="text-sm text-foreground">{violation.reasoning}</p>
-                            </div>
-                          </AccordionContent>
-                        </AccordionItem>
-                      ))}
-                    </Accordion>
-
-                    {/* Applicable Statutes Section - Fetches from /api/statutes/ut/{citation} */}
-                    <div className="mt-8 p-4 bg-blue-100 border-2 border-blue-400 rounded-lg" data-testid="section-statutes">
-                      <h3 className="text-lg font-serif font-bold text-blue-800 mb-4 flex items-center gap-2">
-                        <Building className="h-5 w-5" /> Applicable Utah State Code / West Valley City Code
-                      </h3>
-                      <p className="text-sm mb-4">Fetching statute text for {currentViolations.length} violations from API</p>
-                      <div className="space-y-4">
-                        {currentViolations.map((violation, idx) => (
-                          <Card key={violation.id} className="border-l-4 border-l-blue-500 bg-white" data-testid={`statute-item-${idx}`}>
-                            <CardContent className="p-4">
-                              <div className="flex items-center gap-2 flex-wrap mb-3">
-                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-mono">
-                                  {violation.code}
-                                </Badge>
+                        <Card key={violation.id} className="border-l-4 border-l-blue-500" data-testid={`statute-item-${idx}`}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center gap-2 flex-wrap mb-3">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-mono">
+                                {violation.code}
+                              </Badge>
+                              {violation.chargeName && (
                                 <span className="font-medium text-foreground">{violation.chargeName}</span>
-                                <Badge variant="secondary" className="text-[10px]">
-                                  {violation.source}
-                                </Badge>
-                              </div>
-                              <div className="max-h-64 overflow-auto">
-                                <StatuteDisplay code={violation.code} source={violation.source} />
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
+                              )}
+                            </div>
+                            <div className="overflow-auto">
+                              <StatuteDisplay code={violation.code} source={violation.source} />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
                     </div>
-                    
-                    {/* Interpretation Section - Analysis of whether charges are supported by evidence */}
-                    <div className="mt-8 p-4 bg-purple-50 border-2 border-purple-300 rounded-lg" data-testid="section-interpretation">
-                      <h3 className="text-lg font-serif font-bold text-purple-800 mb-4 flex items-center gap-2">
-                        <Scale className="h-5 w-5" /> Interpretation
-                      </h3>
-                      <p className="text-sm text-purple-700 mb-4">
-                        Analysis of whether the case summary supports each charge based on statutory elements.
-                      </p>
-                      <div className="space-y-4">
-                        {currentViolations.map((violation, idx) => (
-                          <Card key={violation.id} className={cn(
-                            "border-l-4 bg-white",
-                            violation.isViolated ? "border-l-green-500" : "border-l-yellow-500"
-                          )} data-testid={`interpretation-item-${idx}`}>
-                            <CardContent className="p-4">
-                              <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 font-mono">
-                                    {violation.code}
-                                  </Badge>
-                                  <span className="font-medium text-foreground">{violation.chargeName}</span>
-                                </div>
-                                <Badge 
-                                  variant={violation.isViolated ? "default" : "secondary"}
-                                  className={cn(
-                                    violation.isViolated 
-                                      ? "bg-green-100 text-green-800 border-green-300" 
-                                      : "bg-yellow-100 text-yellow-800 border-yellow-300"
-                                  )}
-                                >
-                                  {violation.isViolated ? "Elements Likely Met" : "Review Required"}
-                                </Badge>
-                              </div>
-                              
-                              <div className="space-y-3">
-                                <div>
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Analysis</p>
-                                  <p className="text-sm text-foreground">{violation.reasoning || 'No detailed analysis available.'}</p>
-                                </div>
-                                
-                                <div className="flex items-center gap-2 pt-2 border-t">
-                                  <p className="text-xs text-muted-foreground">Confidence:</p>
-                                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                    <div 
-                                      className={cn(
-                                        "h-full rounded-full",
-                                        violation.confidence >= 0.7 ? "bg-green-500" :
-                                        violation.confidence >= 0.4 ? "bg-yellow-500" : "bg-red-500"
-                                      )}
-                                      style={{ width: `${Math.round(violation.confidence * 100)}%` }}
-                                    />
-                                  </div>
-                                  <p className="text-xs font-medium">{Math.round(violation.confidence * 100)}%</p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </div>
-                    </>
                   )}
-                  
                 </TabsContent>
 
                 <TabsContent value="synopsis" className="space-y-4">
