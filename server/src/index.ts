@@ -9,6 +9,14 @@ import { extractPdfText } from './analysis/pdf.js';
 import { runAnalysis, extractCaseSynopsis, stripCriminalHistory } from './analysis/evaluate.js';
 import { lookupUtahCode, lookupWvcCode, isValidStatuteTextAny } from './analysis/statutes.js';
 import { generateFullLegalAnalysis, summarizeOfficerActions } from './analysis/legalAnalysis.js';
+import { 
+  parseIdentity, 
+  parseIdentityFromText, 
+  extractChargesFromScreeningSheet, 
+  getLastName,
+  getUploadDir,
+  sanitizeText
+} from './utils/parsing.js';
 import type { 
   DocumentSummary, 
   AnalysisElement, 
@@ -44,58 +52,22 @@ app.use('/uploads', express.static(uploadsDir));
 
 const upload = multer({ dest: path.join(uploadsDir, 'tmp') });
 
-function getUploadDir(): string {
-  const dir = path.join(process.cwd(), 'uploads');
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
+// Legacy inline sanitize function (kept for backward compatibility in existing handlers)
+const sanitize = (s: string): string => sanitizeText(s);
 
-// Format name as "Last Name, First Name"
-function formatDefendantName(firstName: string, lastName: string): string {
-  return `${lastName.trim()}, ${firstName.trim()}`;
-}
+// parseIdentity, parseIdentityFromText, extractChargesFromScreeningSheet, getLastName, getUploadDir
+// are now imported from ./utils/parsing.js
 
-function parseIdentity(text: string): { caseNumber: string | null; defendantName: string | null; bookedIntoJail: boolean | null } {
-  // Look for case number - "Case #: XXXX-XXXXX" is primary format
-  let caseNumber: string | null = null;
-  const casePatterns = [
-    // "Case #: XXXX-XXXXX" or "Case #:XXXX-XXXXX" - primary format from Patrol Screening Sheet
-    /Case\s*#\s*:?\s*(\d{4}[\-]\d{5})/i,
-    /Case\s*#\s*:?\s*(\d{2}[\-]\d{5})/i,
-    // "Case XXXX-XXXXX" - without hash
-    /Case\s+(\d{4}[\-]\d{5})/i,
-    /Case\s+(\d{2}[\-]\d{5})/i,
-    // "Police Case" format
-    /Police\s+Case[:\s#]*(\d{2,4}[\-\/]\d+)/i,
-    // "Case No." or "Case Number" with number
-    /Case\s*(?:No\.?|Number)[:\s]*(\d{2,4}[\-\/]\d+)/i,
-    // Standalone case number pattern XXXX-XXXXX
-    /(\d{4}[\-]\d{5})/,
-  ];
-  
-  for (const pattern of casePatterns) {
-    const match = text.match(pattern);
-    if (match && match[1] && match[1].length >= 6) {
-      caseNumber = match[1].trim();
-      break;
-    }
-  }
+// NOTE: The functions below have been moved to server/src/utils/parsing.ts
+// This significantly reduces file size and improves maintainability.
+// The following comment block marks where they were previously defined:
+// - parseIdentity() - Parse identity from Patrol Screening Sheet
+// - parseIdentityFromText() - Robust OCR text parsing
+// - extractChargesFromScreeningSheet() - Extract charges from Offense Information section
+// - getLastName() - Extract last name for sorting
+// - getUploadDir() - Get uploads directory path
 
-  // Parse defendant name - try multiple formats, output as "Last, First"
-  // Support letters, hyphens, apostrophes, periods (for initials), and spaces
-  let defendantName: string | null = null;
-  
-  // Try "Last, First" or "Last, First Middle" format (already in correct format)
-  // Matches: "Doe, John", "Doe, John A.", "Doe, John Andrew Jr."
-  const lastFirstMatch = text.match(/Defendant\s*[:\-]?\s*([A-Z][a-zA-Z\-'\.]+),\s*([A-Z][a-zA-Z\-'\.\s]+)/i);
-  if (lastFirstMatch) {
-    const lastName = lastFirstMatch[1].trim();
-    const firstName = lastFirstMatch[2].trim();
-    defendantName = `${lastName}, ${firstName}`;
-  } else {
-    // Try "First Last" or "First Middle Last" format - need to swap
-    // Capture everything after "Defendant:" that looks like a name
-    const nameBlockMatch = text.match(/Defendant\s*[:\-]?\s*([A-Z][a-zA-Z\-'\.\s]+?)(?=\s*(?:DOB|Date|Address|Case|\n|$))/i);
+// --- ROUTES START ---
     if (nameBlockMatch && nameBlockMatch[1]) {
       const namePart = nameBlockMatch[1].trim();
       
