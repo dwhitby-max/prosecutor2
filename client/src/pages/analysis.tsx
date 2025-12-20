@@ -79,7 +79,6 @@ type Violation = {
   isViolated: boolean;
   confidence: number;
   reasoning: string;
-  evidence: string;
 };
 
 type CriminalRecord = {
