@@ -233,6 +233,12 @@ export interface PriorsSummary {
   incidents?: PriorsIncident[];
 }
 
+export interface ExtractedImageData {
+  mimeType: string;
+  imageData: string;
+  pageNumber: number | null;
+}
+
 export interface AnalysisResultObj {
   narrative?: string;
   documents?: DocumentSummary[];
@@ -241,6 +247,7 @@ export interface AnalysisResultObj {
   statutes?: AnalysisStatute[];
   priors?: PriorsSummary;
   fullText?: string;
+  extractedImages?: ExtractedImageData[];
 }
 
 export interface ViolationCreateData {
