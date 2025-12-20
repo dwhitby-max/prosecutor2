@@ -4,6 +4,15 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: text("username").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  role: text("role", { enum: ["admin", "prosecutor", "analyst"] }).notNull().default("analyst"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastLoginAt: timestamp("last_login_at"),
+});
+
 export const cases = pgTable("cases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   caseNumber: text("case_number").notNull(),
@@ -18,6 +27,10 @@ export const cases = pgTable("cases", {
   bookedIntoJail: boolean("booked_into_jail"),
   caseSummaryNarrative: text("case_summary_narrative"),
   legalAnalysis: text("legal_analysis"),
+  processingStartedAt: timestamp("processing_started_at"),
+  processingCompletedAt: timestamp("processing_completed_at"),
+  processingTimeMs: integer("processing_time_ms"),
+  uploadedByUserId: varchar("uploaded_by_user_id"),
 });
 
 export const documents = pgTable("documents", {
@@ -77,11 +90,19 @@ export const caseImages = pgTable("case_images", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const casesRelations = relations(cases, ({ many }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
+  cases: many(cases),
+}));
+
+export const casesRelations = relations(cases, ({ many, one }) => ({
   documents: many(documents),
   violations: many(violations),
   criminalRecords: many(criminalRecords),
   images: many(caseImages),
+  uploadedBy: one(users, {
+    fields: [cases.uploadedByUserId],
+    references: [users.id],
+  }),
 }));
 
 export const documentsRelations = relations(documents, ({ one }) => ({
@@ -115,6 +136,11 @@ export const caseImagesRelations = relations(caseImages, ({ one }) => ({
     references: [documents.id],
   }),
 }));
+
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+});
 
 export const insertCaseSchema = createInsertSchema(cases).omit({
   id: true,
