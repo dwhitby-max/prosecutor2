@@ -15,5 +15,8 @@ export default defineConfig({
   server: {
     host: true,
     allowedHosts: 'all',
+    headers: {
+      'Cache-Control': 'no-store',
+    },
   },
 });

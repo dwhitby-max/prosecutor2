@@ -430,28 +430,13 @@ export default function AnalysisPage() {
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-3 gap-4 pt-4 border-t">
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Booked Into Jail</p>
-                      <Badge 
-                        variant="outline" 
-                        className={cn(
-                          data.bookedIntoJail === true ? "bg-red-50 text-red-700 border-red-200" :
-                          data.bookedIntoJail === false ? "bg-green-50 text-green-700 border-green-200" :
-                          "bg-gray-50 text-gray-700 border-gray-200"
-                        )}
-                        data-testid="badge-booked"
-                      >
-                        {data.bookedIntoJail === true ? 'Yes' : 
-                         data.bookedIntoJail === false ? 'No' : 'Unknown'}
-                      </Badge>
-                    </div>
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Current Charges</p>
                       <p className="text-sm font-medium">{currentViolations.length} charge(s)</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Case Documents</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Original PDF Document</p>
                       {data.documents && data.documents.length > 0 ? (
                         <div className="flex flex-col gap-1">
                           {data.documents.map((doc) => (
@@ -461,10 +446,10 @@ export default function AnalysisPage() {
                                 href={doc.uploadPath}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-sm text-primary hover:underline flex items-center gap-1"
+                                className="text-sm text-primary hover:underline flex items-center gap-1 font-medium"
                               >
-                                <FileText className="h-3 w-3" />
-                                {doc.filename}
+                                <FileText className="h-4 w-4" />
+                                View {doc.filename}
                               </a>
                             ) : (
                               <span key={doc.id} className="text-sm text-muted-foreground">{doc.filename}</span>
@@ -488,7 +473,7 @@ export default function AnalysisPage() {
                     <Scale className="h-4 w-4" /> Legal Analysis
                   </TabsTrigger>
                   <TabsTrigger value="state-code" className="gap-2" data-testid="tab-state-code">
-                    <Scale className="h-4 w-4" /> State Code
+                    <Scale className="h-4 w-4" /> Codes
                   </TabsTrigger>
                   <TabsTrigger value="synopsis" className="gap-2" data-testid="tab-synopsis">
                     <User className="h-4 w-4" /> Analysis Summary
@@ -606,14 +591,14 @@ export default function AnalysisPage() {
                 <TabsContent value="state-code" className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-serif font-bold text-primary">
-                      Applicable Utah State Code
+                      Applicable Utah State Codes
                     </h3>
                   </div>
 
                   {currentViolations.length === 0 ? (
                     <Card>
                       <CardContent className="p-8 text-center text-muted-foreground">
-                        No charges detected. State code will be shown when charges are identified.
+                        No charges detected. Codes will be shown when charges are identified.
                       </CardContent>
                     </Card>
                   ) : (
