@@ -716,11 +716,20 @@ export default function AnalysisPage() {
                   <h3 className="text-lg font-serif font-bold text-primary">Analysis Summary</h3>
                   <Card>
                     <CardContent className="p-6">
+                      <div className="mb-4">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                          AI-Generated Summary
+                        </p>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {data.summary || 'Analysis in progress. Summary will be available soon.'}
+                        </p>
+                      </div>
+                      
                       {data.rawOfficerActions && (
-                        <div className="mb-4 pb-4 border-b">
+                        <div className="pt-4 border-t">
                           <button
                             onClick={() => setShowFullOfficerActions(!showFullOfficerActions)}
-                            className="text-sm text-primary hover:text-primary/80 underline flex items-center gap-1"
+                            className="text-sm text-primary hover:text-primary/80 underline flex items-center gap-1 font-medium"
                           >
                             {showFullOfficerActions ? 'Hide' : 'View'} Full Officer's Actions
                             <ChevronDown className={cn("h-4 w-4 transition-transform", showFullOfficerActions && "rotate-180")} />
@@ -729,7 +738,7 @@ export default function AnalysisPage() {
                           {showFullOfficerActions && (
                             <div className="mt-4 p-4 bg-muted/50 rounded-lg">
                               <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide font-semibold">
-                                Raw Officer's Actions from General Offense Hardcopy
+                                Officer's Actions from General Offense Hardcopy
                               </p>
                               <p className="text-sm leading-relaxed whitespace-pre-wrap">
                                 {data.rawOfficerActions}
@@ -738,10 +747,6 @@ export default function AnalysisPage() {
                           )}
                         </div>
                       )}
-                      
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {data.summary || 'Analysis in progress. Summary will be available soon.'}
-                      </p>
                     </CardContent>
                   </Card>
                 </TabsContent>
