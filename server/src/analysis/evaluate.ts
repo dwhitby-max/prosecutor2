@@ -250,8 +250,8 @@ export function extractCaseSynopsis(fullText: string): string | null {
       // Remove any criminal history mentions that might have slipped in
       actions = stripCriminalHistory(actions);
       
-      if (actions.length > 20 && actions.length < 5000) {
-        return actions.slice(0, 800) + (actions.length > 800 ? '...' : '');
+      if (actions.length > 20 && actions.length < 15000) {
+        return actions;
       }
     }
   }
@@ -264,8 +264,8 @@ export function extractCaseSynopsis(fullText: string): string | null {
       actions = stripPageHeaders(actions);
       actions = stripCriminalHistory(actions);
       
-      if (actions.length > 20 && actions.length < 5000) {
-        return actions.slice(0, 800) + (actions.length > 800 ? '...' : '');
+      if (actions.length > 20 && actions.length < 15000) {
+        return actions;
       }
     }
   }
