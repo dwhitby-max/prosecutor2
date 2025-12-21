@@ -9,7 +9,7 @@ import { extractPdfText } from './analysis/pdf.js';
 import { runAnalysis, extractCaseSynopsis, stripCriminalHistory } from './analysis/evaluate.js';
 import { lookupUtahCode, lookupWvcCode, isValidStatuteTextAny } from './analysis/statutes.js';
 import { generateFullLegalAnalysis, summarizeOfficerActions } from './analysis/legalAnalysis.js';
-import { setupAuth, registerAuthRoutes, isAuthenticated } from '../replit_integrations/auth/index.js';
+import { setupAuth, registerAuthRoutes, isAuthenticated, getCurrentUser } from '../replit_integrations/auth/index.js';
 import type { 
   AnalysisCitation, 
   AnalysisElement, 
@@ -488,11 +488,15 @@ function getLastName(defendantName: string): string {
 
 // Get all cases (active by default) - sorted alphabetically by last name
 // Scoped by user role: admin sees all, company sees their org, user sees assigned cases
-app.get('/api/cases', isAuthenticated, async (req: any, res) => {
+app.get('/api/cases', isAuthenticated, getCurrentUser, async (req: any, res) => {
   res.set('Cache-Control', 'no-store');
   try {
     const filter = req.query.filter as string || 'active';
-    const user = req.user;
+    const user = req.currentUser;
+    
+    if (!user) {
+      return res.status(401).json({ ok: false, error: 'User not found' });
+    }
     
     let caseList;
     if (filter === 'completed') {
@@ -517,8 +521,10 @@ app.get('/api/cases', isAuthenticated, async (req: any, res) => {
         );
       }
     } else {
-      // Regular users only see cases assigned to them
-      caseList = caseList.filter((c: any) => c.assignedToUserId === user.id);
+      // Regular users only see cases assigned to them or uploaded by them
+      caseList = caseList.filter((c: any) => 
+        c.assignedToUserId === user.id || c.uploadedByUserId === user.id
+      );
     }
     
     // Sort alphabetically by last name (first part before comma)
@@ -603,7 +609,7 @@ app.get('/api/debug/document-ai', async (req, res) => {
 });
 
 // Delete multiple cases
-app.delete('/api/cases', isAuthenticated, async (req: any, res) => {
+app.delete('/api/cases', isAuthenticated, getCurrentUser, async (req: any, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -619,7 +625,7 @@ app.delete('/api/cases', isAuthenticated, async (req: any, res) => {
 });
 
 // Mark case complete/active
-app.patch('/api/cases/:id/complete', isAuthenticated, async (req: any, res) => {
+app.patch('/api/cases/:id/complete', isAuthenticated, getCurrentUser, async (req: any, res) => {
   try {
     const { isComplete } = req.body;
     await storage.markCaseComplete(req.params.id, isComplete === true);
@@ -631,7 +637,7 @@ app.patch('/api/cases/:id/complete', isAuthenticated, async (req: any, res) => {
 });
 
 // Assign case to a user
-app.patch('/api/cases/:id/assign', isAuthenticated, async (req: any, res) => {
+app.patch('/api/cases/:id/assign', isAuthenticated, getCurrentUser, async (req: any, res) => {
   try {
     const { assignedToUserId } = req.body;
     const caseId = req.params.id;
@@ -650,7 +656,7 @@ app.patch('/api/cases/:id/assign', isAuthenticated, async (req: any, res) => {
 });
 
 // Reprocess a stuck case (re-run analysis on existing documents)
-app.post('/api/cases/:id/reprocess', isAuthenticated, async (req: any, res) => {
+app.post('/api/cases/:id/reprocess', isAuthenticated, getCurrentUser, async (req: any, res) => {
   try {
     const caseId = req.params.id;
     const caseData = await storage.getCaseWithDetails(caseId);
@@ -900,10 +906,15 @@ app.get('/api/statutes', async (req, res) => {
 
 // Get single case with full details
 // Scoped by user role: admin sees all, company sees their org, user sees assigned cases
-app.get('/api/cases/:id', isAuthenticated, async (req: any, res) => {
+app.get('/api/cases/:id', isAuthenticated, getCurrentUser, async (req: any, res) => {
   try {
     const caseId = req.params.id;
-    const user = req.user;
+    const user = req.currentUser;
+    
+    if (!user) {
+      return res.status(401).json({ ok: false, error: 'User not found' });
+    }
+    
     const caseData = await storage.getCaseWithDetails(caseId);
     
     if (!caseData) {
@@ -947,7 +958,7 @@ app.get('/api/cases/:id', isAuthenticated, async (req: any, res) => {
 });
 
 // Upload and analyze PDFs
-app.post('/api/cases/upload', isAuthenticated, upload.array('pdfs', 10) as unknown as RequestHandler, async (req: any, res: Response) => {
+app.post('/api/cases/upload', isAuthenticated, getCurrentUser, upload.array('pdfs', 10) as unknown as RequestHandler, async (req: any, res: Response) => {
   try {
     console.log('[UPLOAD] Starting upload request');
     const files = (req.files ?? []) as Express.Multer.File[];
@@ -957,9 +968,9 @@ app.post('/api/cases/upload', isAuthenticated, upload.array('pdfs', 10) as unkno
     }
     console.log('[UPLOAD] Files received:', files.length);
 
-    const user = req.user;
+    const user = req.currentUser;
     const assignedToUserId = req.body?.assignedToUserId || null;
-    const uploadedByUserId = user?.id || user?.claims?.sub || null;
+    const uploadedByUserId = user?.id || null;
     const companyId = req.body?.companyId || user?.companyId || null;
     
     console.log('[UPLOAD] User:', uploadedByUserId, 'Company:', companyId, 'AssignTo:', assignedToUserId);
