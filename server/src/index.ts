@@ -609,6 +609,25 @@ app.patch('/api/cases/:id/complete', async (req, res) => {
   }
 });
 
+// Assign case to a user
+app.patch('/api/cases/:id/assign', async (req, res) => {
+  try {
+    const { assignedToUserId } = req.body;
+    const caseId = req.params.id;
+    
+    const caseRecord = await storage.getCase(caseId);
+    if (!caseRecord) {
+      return res.status(404).json({ ok: false, error: 'Case not found' });
+    }
+    
+    await db.update(cases).set({ assignedToUserId: assignedToUserId || null }).where(eq(cases.id, caseId));
+    res.json({ ok: true, message: 'Case assigned successfully' });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+
 // Reprocess a stuck case (re-run analysis on existing documents)
 app.post('/api/cases/:id/reprocess', async (req, res) => {
   try {
@@ -900,6 +919,10 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
       return res.status(400).json({ ok: false, error: 'No PDFs uploaded.' });
     }
 
+    const assignedToUserId = req.body?.assignedToUserId || null;
+    const uploadedByUserId = (req as any).user?.claims?.sub || null;
+    const companyId = req.body?.companyId || null;
+
     const createdCaseIds: string[] = [];
 
     for (const f of files) {
@@ -932,6 +955,9 @@ app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHand
         criminalHistorySummary: null,
         isMarkedComplete: false,
         bookedIntoJail: parsed.bookedIntoJail ?? null,
+        uploadedByUserId,
+        assignedToUserId,
+        companyId,
       };
       
       const newCase = await storage.createCase(caseData);

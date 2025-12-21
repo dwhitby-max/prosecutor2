@@ -1,10 +1,19 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { AppShell } from "@/components/layout/app-shell";
 import { useDropzone } from "react-dropzone";
-import { UploadCloud, FileText, CheckCircle2, Loader2, ArrowRight } from "lucide-react";
+import { UploadCloud, FileText, CheckCircle2, Loader2, ArrowRight, User } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 const STEPS = [
   { id: "upload", label: "Uploading Documents" },
@@ -15,13 +24,40 @@ const STEPS = [
   { id: "synthesis", label: "Synthesizing Report" },
 ];
 
+interface AssignableUser {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  role: string;
+}
+
 export default function UploadPage() {
   const [, setLocation] = useLocation();
+  const { user, isAuthenticated } = useAuth();
   const [files, setFiles] = useState<File[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated && (user?.role === "services" || user?.role === "company" || user?.role === "admin")) {
+      setLoadingUsers(true);
+      fetch("/api/users/assignable", { credentials: "include" })
+        .then(res => res.json())
+        .then(data => {
+          if (data.ok) {
+            setAssignableUsers(data.users || []);
+          }
+        })
+        .catch(err => console.error("Failed to load assignable users:", err))
+        .finally(() => setLoadingUsers(false));
+    }
+  }, [isAuthenticated, user?.role]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setFiles(acceptedFiles);
@@ -31,7 +67,7 @@ export default function UploadPage() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
     onDrop, 
     accept: { 'application/pdf': ['.pdf'] },
-    maxSize: 50 * 1024 * 1024 // 50MB
+    maxSize: 50 * 1024 * 1024
   } as any);
 
   const startAnalysis = async () => {
@@ -45,8 +81,11 @@ export default function UploadPage() {
     try {
       const formData = new FormData();
       files.forEach(file => formData.append('pdfs', file));
+      
+      if (selectedUserId) {
+        formData.append('assignedToUserId', selectedUserId);
+      }
 
-      // Simulate progress animation
       const progressInterval = setInterval(() => {
         setProgress(prev => Math.min(prev + 2, 95));
       }, 100);
@@ -58,6 +97,7 @@ export default function UploadPage() {
       const response = await fetch('/api/cases/upload', {
         method: 'POST',
         body: formData,
+        credentials: 'include',
       });
 
       clearInterval(progressInterval);
@@ -72,7 +112,6 @@ export default function UploadPage() {
       setProgress(100);
       setCurrentStep(STEPS.length - 1);
 
-      // Navigate to the first uploaded case
       if (result.caseIds && result.caseIds.length > 0) {
         setTimeout(() => {
           setLocation(`/analysis/${result.caseIds[0]}`);
@@ -85,6 +124,15 @@ export default function UploadPage() {
       setIsAnalyzing(false);
     }
   };
+
+  const getDisplayName = (u: AssignableUser) => {
+    if (u.firstName && u.lastName) {
+      return `${u.firstName} ${u.lastName}`;
+    }
+    return u.email || "Unknown User";
+  };
+
+  const canAssign = user?.role === "services" || user?.role === "company" || user?.role === "admin";
 
   return (
     <AppShell>
@@ -139,6 +187,35 @@ export default function UploadPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {canAssign && assignableUsers.length > 0 && (
+                <div className="bg-card border rounded-lg p-4 space-y-3">
+                  <Label className="flex items-center gap-2 text-sm font-medium">
+                    <User className="h-4 w-4" />
+                    Assign to User (Optional)
+                  </Label>
+                  {loadingUsers ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading users...
+                    </div>
+                  ) : (
+                    <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select a user to assign this case..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Unassigned</SelectItem>
+                        {assignableUsers.map(u => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {getDisplayName(u)} ({u.role})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               )}
 
