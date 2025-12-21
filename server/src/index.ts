@@ -641,7 +641,7 @@ app.patch('/api/cases/:id/assign', isAuthenticated, async (req: any, res) => {
       return res.status(404).json({ ok: false, error: 'Case not found' });
     }
     
-    await db.update(cases).set({ assignedToUserId: assignedToUserId || null }).where(eq(cases.id, caseId));
+    await storage.assignCaseToUser(caseId, assignedToUserId || null);
     res.json({ ok: true, message: 'Case assigned successfully' });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';

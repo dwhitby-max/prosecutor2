@@ -141,14 +141,12 @@ export function registerAuthRoutes(app: Express): void {
         return res.status(404).json({ ok: false, error: "User not found" });
       }
 
-      let companiesList;
+      let companiesList: Array<{ id: string; name: string; createdAt: Date | null }> = [];
       if (currentUser.role === "admin") {
         companiesList = await authStorage.getAllCompanies();
       } else if (currentUser.role === "company" && currentUser.companyId) {
         const company = await authStorage.getCompany(currentUser.companyId);
         companiesList = company ? [company] : [];
-      } else {
-        companiesList = [];
       }
       
       res.json({ ok: true, companies: companiesList });
