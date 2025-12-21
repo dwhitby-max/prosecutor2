@@ -1,17 +1,64 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, UploadCloud, FileText, Settings, ShieldAlert, Scale, Users } from "lucide-react";
+import { LayoutDashboard, UploadCloud, FileText, Settings, Scale, Users, LogIn, LogOut, Building2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+
+const roleLabels: Record<string, string> = {
+  user: "User",
+  services: "Services",
+  company: "Company Admin",
+  admin: "Administrator",
+};
 
 export function Sidebar() {
   const [location] = useLocation();
+  const { user, isLoading, isAuthenticated, logout, isLoggingOut } = useAuth();
 
-  const navItems = [
-    { href: "/", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/upload", label: "New Analysis", icon: UploadCloud },
-    { href: "/cases", label: "Case Archives", icon: FileText },
-    { href: "/admin", label: "Admin", icon: Users },
-    { href: "/settings", label: "Settings", icon: Settings },
-  ];
+  const getNavItems = () => {
+    const baseItems = [
+      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/upload", label: "New Analysis", icon: UploadCloud },
+      { href: "/cases", label: "Case Archives", icon: FileText },
+    ];
+
+    if (!user) return baseItems;
+
+    const items = [...baseItems];
+    
+    if (user.role === "company" || user.role === "admin") {
+      items.push({ href: "/company", label: "Company", icon: Building2 });
+    }
+    
+    if (user.role === "admin") {
+      items.push({ href: "/admin", label: "Admin", icon: Users });
+    }
+
+    items.push({ href: "/settings", label: "Settings", icon: Settings });
+
+    return items;
+  };
+
+  const navItems = getNavItems();
+
+  const getInitials = () => {
+    if (!user) return "?";
+    if (user.firstName && user.lastName) {
+      return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
+    }
+    if (user.email) {
+      return user.email[0].toUpperCase();
+    }
+    return "U";
+  };
+
+  const getDisplayName = () => {
+    if (!user) return "Guest";
+    if (user.firstName && user.lastName) {
+      return `${user.firstName} ${user.lastName}`;
+    }
+    return user.email || "User";
+  };
 
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-sidebar text-sidebar-foreground">
@@ -64,15 +111,56 @@ export function Sidebar() {
       </div>
 
       <div className="border-t border-sidebar-border p-4">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-sidebar-primary/20 flex items-center justify-center text-sidebar-primary font-bold text-xs">
-            JD
+        {isLoading ? (
+          <div className="flex items-center justify-center py-2">
+            <Loader2 className="h-5 w-5 animate-spin text-sidebar-foreground/50" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">Jane Doe</span>
-            <span className="text-xs text-sidebar-foreground/50">Prosecutor</span>
+        ) : isAuthenticated && user ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              {user.profileImageUrl ? (
+                <img 
+                  src={user.profileImageUrl} 
+                  alt={getDisplayName()}
+                  className="h-8 w-8 rounded-full object-cover"
+                />
+              ) : (
+                <div className="h-8 w-8 rounded-full bg-sidebar-primary/20 flex items-center justify-center text-sidebar-primary font-bold text-xs">
+                  {getInitials()}
+                </div>
+              )}
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-sm font-medium truncate">{getDisplayName()}</span>
+                <span className="text-xs text-sidebar-foreground/50">{roleLabels[user.role] || user.role}</span>
+              </div>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground"
+              onClick={() => logout()}
+              disabled={isLoggingOut}
+            >
+              {isLoggingOut ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4 mr-2" />
+              )}
+              Sign Out
+            </Button>
           </div>
-        </div>
+        ) : (
+          <a href="/api/login" className="w-full">
+            <Button 
+              variant="default" 
+              size="sm" 
+              className="w-full"
+            >
+              <LogIn className="h-4 w-4 mr-2" />
+              Sign In
+            </Button>
+          </a>
+        )}
       </div>
     </div>
   );
