@@ -487,10 +487,13 @@ function getLastName(defendantName: string): string {
 }
 
 // Get all cases (active by default) - sorted alphabetically by last name
+// Scoped by user role: admin sees all, company sees their org, user sees assigned cases
 app.get('/api/cases', isAuthenticated, async (req: any, res) => {
   res.set('Cache-Control', 'no-store');
   try {
     const filter = req.query.filter as string || 'active';
+    const user = req.user;
+    
     let caseList;
     if (filter === 'completed') {
       caseList = await storage.getCompletedCases();
@@ -500,14 +503,32 @@ app.get('/api/cases', isAuthenticated, async (req: any, res) => {
       caseList = await storage.getActiveCases();
     }
     
+    // Apply role-based filtering
+    if (user.role === 'admin') {
+      // Admins see all cases - no filtering
+    } else if (user.role === 'company' || user.role === 'services') {
+      // Company/Services users see cases from their organization
+      if (user.companyId) {
+        caseList = caseList.filter((c: any) => c.companyId === user.companyId);
+      } else {
+        // No company assigned - only see cases they uploaded or assigned to them
+        caseList = caseList.filter((c: any) => 
+          c.uploadedByUserId === user.id || c.assignedToUserId === user.id
+        );
+      }
+    } else {
+      // Regular users only see cases assigned to them
+      caseList = caseList.filter((c: any) => c.assignedToUserId === user.id);
+    }
+    
     // Sort alphabetically by last name (first part before comma)
-    caseList.sort((a, b) => {
+    caseList.sort((a: any, b: any) => {
       const lastA = getLastName(a.defendantName);
       const lastB = getLastName(b.defendantName);
       return lastA.localeCompare(lastB);
     });
     
-    console.log('Returning', caseList.length, filter, 'cases');
+    console.log('Returning', caseList.length, filter, 'cases for user', user.id, 'role:', user.role);
     res.json({ ok: true, cases: caseList });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
@@ -878,13 +899,27 @@ app.get('/api/statutes', async (req, res) => {
 });
 
 // Get single case with full details
+// Scoped by user role: admin sees all, company sees their org, user sees assigned cases
 app.get('/api/cases/:id', isAuthenticated, async (req: any, res) => {
   try {
     const caseId = req.params.id;
+    const user = req.user;
     const caseData = await storage.getCaseWithDetails(caseId);
     
     if (!caseData) {
       return res.status(404).json({ ok: false, error: 'Case not found' });
+    }
+    
+    // Check if user has access to this case
+    const hasAccess = 
+      user.role === 'admin' ||
+      (user.role === 'company' && user.companyId && caseData.companyId === user.companyId) ||
+      (user.role === 'services' && user.companyId && caseData.companyId === user.companyId) ||
+      caseData.assignedToUserId === user.id ||
+      caseData.uploadedByUserId === user.id;
+    
+    if (!hasAccess) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
     }
 
     // Log statute text status for each violation
