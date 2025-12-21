@@ -947,16 +947,22 @@ app.get('/api/cases/:id', isAuthenticated, async (req: any, res) => {
 });
 
 // Upload and analyze PDFs
-app.post('/api/cases/upload', upload.array('pdfs', 10) as unknown as RequestHandler, async (req: Request, res: Response) => {
+app.post('/api/cases/upload', isAuthenticated, upload.array('pdfs', 10) as unknown as RequestHandler, async (req: any, res: Response) => {
   try {
+    console.log('[UPLOAD] Starting upload request');
     const files = (req.files ?? []) as Express.Multer.File[];
     if (files.length === 0) {
+      console.log('[UPLOAD] No files in request');
       return res.status(400).json({ ok: false, error: 'No PDFs uploaded.' });
     }
+    console.log('[UPLOAD] Files received:', files.length);
 
+    const user = req.user;
     const assignedToUserId = req.body?.assignedToUserId || null;
-    const uploadedByUserId = (req as any).user?.claims?.sub || null;
-    const companyId = req.body?.companyId || null;
+    const uploadedByUserId = user?.id || user?.claims?.sub || null;
+    const companyId = req.body?.companyId || user?.companyId || null;
+    
+    console.log('[UPLOAD] User:', uploadedByUserId, 'Company:', companyId, 'AssignTo:', assignedToUserId);
 
     const createdCaseIds: string[] = [];
 
