@@ -9,6 +9,7 @@ import { extractPdfText } from './analysis/pdf.js';
 import { runAnalysis, extractCaseSynopsis, stripCriminalHistory } from './analysis/evaluate.js';
 import { lookupUtahCode, lookupWvcCode, isValidStatuteTextAny } from './analysis/statutes.js';
 import { generateFullLegalAnalysis, summarizeOfficerActions } from './analysis/legalAnalysis.js';
+import { setupAuth, registerAuthRoutes, isAuthenticated } from '../replit_integrations/auth/index.js';
 import type { 
   AnalysisCitation, 
   AnalysisElement, 
@@ -35,6 +36,12 @@ interface HttpError extends Error {
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
+
+// Setup authentication (BEFORE other routes)
+(async () => {
+  await setupAuth(app);
+  registerAuthRoutes(app);
+})();
 
 // Request timing middleware for performance monitoring (Development Principles compliance)
 app.use((req: Request, res: Response, next: NextFunction) => {

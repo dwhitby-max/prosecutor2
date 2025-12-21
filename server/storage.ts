@@ -11,13 +11,16 @@ import {
   type InsertCaseImage,
   type CaseWithDetails,
   type User,
-  type InsertUser,
+  type UpsertUser,
+  type Company,
+  type InsertCompany,
   cases,
   documents,
   violations,
   criminalRecords,
   caseImages,
-  users
+  users,
+  companies
 } from "../shared/schema.js";
 import { db } from "./db";
 import { eq, desc, asc, inArray, sql, gte, lte, and, count, avg } from "drizzle-orm";
@@ -304,27 +307,96 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async createUser(data: InsertUser): Promise<User> {
+  async upsertUser(data: UpsertUser): Promise<User> {
     const start = Date.now();
-    const [user] = await db.insert(users).values(data).returning();
-    logQuery('INSERT', 'users', start, { username: data.username });
+    const [user] = await db
+      .insert(users)
+      .values(data)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...data,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    logQuery('UPSERT', 'users', start, { id: data.id, email: data.email });
     return user;
   }
 
-  async getOrCreateDefaultUser(): Promise<User> {
+  async getUserById(id: string): Promise<User | undefined> {
     const start = Date.now();
-    const [existingUser] = await db.select().from(users).where(eq(users.username, 'default'));
-    if (existingUser) {
-      logQuery('SELECT', 'users', start, { username: 'default', found: true });
-      return existingUser;
-    }
-    const [newUser] = await db.insert(users).values({
-      username: 'default',
-      displayName: 'Default User',
-      role: 'analyst',
-    }).returning();
-    logQuery('INSERT', 'users', start, { username: 'default', created: true });
-    return newUser;
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    logQuery('SELECT', 'users', start, { id, found: !!user });
+    return user;
+  }
+
+  async getUsersByCompany(companyId: string): Promise<User[]> {
+    const start = Date.now();
+    const result = await db.select().from(users).where(eq(users.companyId, companyId));
+    logQuery('SELECT', 'users', start, { companyId, count: result.length });
+    return result;
+  }
+
+  async updateUserRole(id: string, role: 'user' | 'services' | 'company' | 'admin'): Promise<void> {
+    const start = Date.now();
+    await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, id));
+    logQuery('UPDATE', 'users', start, { id, role });
+  }
+
+  async updateUserCompany(id: string, companyId: string | null): Promise<void> {
+    const start = Date.now();
+    await db.update(users).set({ companyId, updatedAt: new Date() }).where(eq(users.id, id));
+    logQuery('UPDATE', 'users', start, { id, companyId });
+  }
+
+  async updateUserStatus(id: string, status: 'active' | 'pending' | 'inactive'): Promise<void> {
+    const start = Date.now();
+    await db.update(users).set({ status, updatedAt: new Date() }).where(eq(users.id, id));
+    logQuery('UPDATE', 'users', start, { id, status });
+  }
+
+  // Company methods
+  async createCompany(data: InsertCompany): Promise<Company> {
+    const start = Date.now();
+    const [company] = await db.insert(companies).values(data).returning();
+    logQuery('INSERT', 'companies', start, { name: data.name });
+    return company;
+  }
+
+  async getAllCompanies(): Promise<Company[]> {
+    const start = Date.now();
+    const result = await db.select().from(companies).orderBy(desc(companies.createdAt));
+    logQuery('SELECT', 'companies', start, { count: result.length });
+    return result;
+  }
+
+  async getCompanyById(id: string): Promise<Company | undefined> {
+    const start = Date.now();
+    const [company] = await db.select().from(companies).where(eq(companies.id, id));
+    logQuery('SELECT', 'companies', start, { id, found: !!company });
+    return company;
+  }
+
+  // Case assignment methods
+  async assignCaseToUser(caseId: string, userId: string): Promise<void> {
+    const start = Date.now();
+    await db.update(cases).set({ assignedToUserId: userId }).where(eq(cases.id, caseId));
+    logQuery('UPDATE', 'cases', start, { caseId, assignedToUserId: userId });
+  }
+
+  async getCasesByAssignedUser(userId: string): Promise<Case[]> {
+    const start = Date.now();
+    const result = await db.select().from(cases).where(eq(cases.assignedToUserId, userId)).orderBy(desc(cases.uploadDate));
+    logQuery('SELECT', 'cases', start, { assignedToUserId: userId, count: result.length });
+    return result;
+  }
+
+  async getCasesByCompany(companyId: string): Promise<Case[]> {
+    const start = Date.now();
+    const result = await db.select().from(cases).where(eq(cases.companyId, companyId)).orderBy(desc(cases.uploadDate));
+    logQuery('SELECT', 'cases', start, { companyId, count: result.length });
+    return result;
   }
 
   async getAdminStats(): Promise<{

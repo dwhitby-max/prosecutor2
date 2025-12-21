@@ -4,14 +4,26 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  displayName: text("display_name").notNull(),
-  role: text("role", { enum: ["admin", "prosecutor", "analyst"] }).notNull().default("analyst"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  lastLoginAt: timestamp("last_login_at"),
-});
+// Import and re-export auth schema (users, sessions, companies)
+import { 
+  users, 
+  sessions, 
+  companies,
+  type User,
+  type UpsertUser,
+  type Company,
+  type InsertCompany 
+} from "./models/auth";
+
+export { 
+  users, 
+  sessions, 
+  companies,
+  type User,
+  type UpsertUser,
+  type Company,
+  type InsertCompany 
+};
 
 export const cases = pgTable("cases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -30,7 +42,12 @@ export const cases = pgTable("cases", {
   processingStartedAt: timestamp("processing_started_at"),
   processingCompletedAt: timestamp("processing_completed_at"),
   processingTimeMs: integer("processing_time_ms"),
-  uploadedByUserId: varchar("uploaded_by_user_id"),
+  // User who uploaded/created the case
+  uploadedByUserId: varchar("uploaded_by_user_id").references(() => users.id),
+  // User the case is assigned to
+  assignedToUserId: varchar("assigned_to_user_id").references(() => users.id),
+  // Company the case belongs to
+  companyId: varchar("company_id").references(() => companies.id),
 });
 
 export const documents = pgTable("documents", {
@@ -137,11 +154,6 @@ export const caseImagesRelations = relations(caseImages, ({ one }) => ({
   }),
 }));
 
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
-});
-
 export const insertCaseSchema = createInsertSchema(cases).omit({
   id: true,
   uploadDate: true,
@@ -165,8 +177,6 @@ export const insertCaseImageSchema = createInsertSchema(caseImages).omit({
   createdAt: true,
 });
 
-export type User = typeof users.$inferSelect;
-export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Case = typeof cases.$inferSelect;
 export type InsertCase = z.infer<typeof insertCaseSchema>;
 export type Document = typeof documents.$inferSelect;
