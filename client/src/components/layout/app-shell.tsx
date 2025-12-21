@@ -150,16 +150,29 @@ export function Sidebar() {
             </Button>
           </div>
         ) : (
-          <a href="/api/login" className="w-full">
+          <div className="space-y-2">
             <Button 
               variant="default" 
               size="sm" 
               className="w-full"
+              onClick={() => window.location.href = "/api/login"}
             >
               <LogIn className="h-4 w-4 mr-2" />
               Sign In
             </Button>
-          </a>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full"
+              onClick={() => window.location.href = "/api/login"}
+            >
+              <LogIn className="h-4 w-4 mr-2" />
+              Sign Up
+            </Button>
+            <p className="text-xs text-center text-sidebar-foreground/50">
+              Use Google, GitHub, or email
+            </p>
+          </div>
         )}
       </div>
     </div>
