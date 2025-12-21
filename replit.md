@@ -19,20 +19,32 @@ A full-stack web application for legal case screening and analysis. The system a
 - **Backend:** Node.js, Express, TypeScript
 - **Database:** PostgreSQL with Drizzle ORM
 - **PDF Processing:** `pdf-parse` / `pdfjs-dist`
+- **Authentication:** Replit Auth (Google/GitHub/Apple/email sign-in)
 
 ### Key Features
 - **AI-Powered Analysis:** Gemini AI generates case summary narratives and legal analyses, comparing case facts against statutory requirements.
 - **Charge Type Classification:** Violations are classified as 'current' (from Patrol Screening Sheet) or 'historical' (from fallback text scanning).
-- **Comprehensive Data Storage:** Database schema includes `cases`, `documents`, `violations`, `criminalRecords`, and `caseImages`.
+- **Comprehensive Data Storage:** Database schema includes `cases`, `documents`, `violations`, `criminalRecords`, `caseImages`, `users`, `companies`, and `sessions`.
 - **Statute Text Fetching:** Robust system for fetching and validating Utah state code text from `le.utah.gov`, including Playwright fallback for dynamically loaded content and strict content validation (`validateStatuteContent()`) to prevent navigation HTML leaks.
 - **Analysis Summary:** Extracts "Officer's Actions" from PDF documents, handling page headers and section identification.
 - **Error Handling & Performance:** Strict TypeScript, typed API responses, comprehensive error handling, and performance monitoring for database queries and API calls.
-- **Frontend Routing:** Dashboard, upload, and detailed analysis views.
+- **Frontend Routing:** Dashboard, upload, detailed analysis, admin, and company views.
+
+### Authentication & Authorization
+- **Authentication:** Replit Auth integration with session management using PostgreSQL-backed sessions.
+- **User Roles:** Four account types with hierarchical permissions:
+  - `user` - Basic access to view and manage assigned cases
+  - `services` - Can upload cases and assign them to company users
+  - `company` - Company admin with access to all users and cases in their organization
+  - `admin` - Full system access including user/company management
+- **Company Association:** Users can be associated with companies for organization-level access control.
+- **Role-based Navigation:** Sidebar dynamically shows/hides menu items based on user role.
+- **Protected Endpoints:** All case management endpoints require authentication.
 
 ### System Design
 - **Type Safety:** All code uses TypeScript with strict type checking, avoiding `any` types.
 - **Database Operations:** Drizzle ORM with extensive logging for performance monitoring.
-- **Security:** Environment variables for sensitive configuration; no hardcoded secrets.
+- **Security:** Environment variables for sensitive configuration; no hardcoded secrets. Role-based access control on API endpoints.
 - **Statute Text Revert Fix:** Implemented `AbortController`, sequence tracking, state protection, and single-fetch polling to prevent statute text from reverting due to race conditions or stale data. Multi-layer validation and parser guards are in place to ensure data integrity.
 
 ## External Dependencies
@@ -41,3 +53,12 @@ A full-stack web application for legal case screening and analysis. The system a
 - **`pdf-parse` / `pdfjs-dist`:** Libraries for PDF document text extraction.
 - **`le.utah.gov`:** External website for fetching Utah state code text.
 - **Playwright:** Used as a headless browser for fetching dynamically rendered statute content when direct parsing fails.
+- **Replit Auth:** Authentication provider supporting Google, GitHub, Apple, and email sign-in.
+
+## Key Files
+- `server/replit_integrations/auth/` - Authentication integration (Replit Auth)
+- `shared/models/auth.ts` - User, Company, and Session schemas
+- `client/src/hooks/use-auth.ts` - Frontend authentication hook
+- `client/src/components/layout/app-shell.tsx` - Main layout with role-based navigation
+- `client/src/pages/admin.tsx` - Admin dashboard for user/company management
+- `client/src/pages/company.tsx` - Company dashboard for organization-level view

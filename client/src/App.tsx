@@ -7,6 +7,7 @@ import Dashboard from "@/pages/dashboard";
 import UploadPage from "@/pages/upload";
 import AnalysisPage from "@/pages/analysis";
 import Admin from "@/pages/admin";
+import CompanyDashboard from "@/pages/company";
 
 function Router() {
   return (
@@ -15,6 +16,7 @@ function Router() {
       <Route path="/upload" component={UploadPage} />
       <Route path="/analysis/:id" component={AnalysisPage} />
       <Route path="/admin" component={Admin} />
+      <Route path="/company" component={CompanyDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

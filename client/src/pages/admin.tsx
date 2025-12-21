@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppShell } from "@/components/layout/app-shell";
-import { Users, Clock, FileText, Calendar, TrendingUp, Loader2 } from "lucide-react";
+import { Users, Clock, FileText, Calendar, TrendingUp, Loader2, Building2, Shield, Plus, UserCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
 
 type AdminStats = {
   totalCases: number;
@@ -21,11 +29,35 @@ type ProcessingReport = {
 };
 
 type User = {
-  id: number;
-  username: string;
-  displayName: string;
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
   role: string;
-  createdAt: string;
+  status: string;
+  companyId: string | null;
+  companyName: string | null;
+  createdAt: string | null;
+};
+
+type Company = {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string | null;
+};
+
+const roleLabels: Record<string, string> = {
+  user: "User",
+  services: "Services",
+  company: "Company Admin",
+  admin: "Administrator",
+};
+
+const statusColors: Record<string, string> = {
+  active: "bg-green-100 text-green-800",
+  pending: "bg-yellow-100 text-yellow-800",
+  inactive: "bg-gray-100 text-gray-800",
 };
 
 function formatDuration(ms: number | null): string {
@@ -37,7 +69,8 @@ function formatDuration(ms: number | null): string {
   return `${minutes}m ${seconds}s`;
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "N/A";
   const date = new Date(dateStr);
   return date.toLocaleDateString("en-US", {
     month: "short",
@@ -47,18 +80,32 @@ function formatDate(dateStr: string): string {
 }
 
 export default function Admin() {
+  const { user: currentUser, isLoading: authLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [processingReport, setProcessingReport] = useState<ProcessingReport | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [isCreatingCompany, setIsCreatingCompany] = useState(false);
+  const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return;
+    
+    if (!currentUser || currentUser.role !== "admin") {
+      setLocation("/");
+      return;
+    }
+
     async function fetchData() {
       try {
-        const [statsRes, reportRes, usersRes] = await Promise.all([
-          fetch("/api/admin/stats"),
-          fetch("/api/admin/processing-report"),
-          fetch("/api/admin/users"),
+        const [statsRes, reportRes, usersRes, companiesRes] = await Promise.all([
+          fetch("/api/admin/stats", { credentials: "include" }),
+          fetch("/api/admin/processing-report", { credentials: "include" }),
+          fetch("/api/admin/users", { credentials: "include" }),
+          fetch("/api/admin/companies", { credentials: "include" }),
         ]);
 
         if (statsRes.ok) {
@@ -71,7 +118,11 @@ export default function Admin() {
         }
         if (usersRes.ok) {
           const result = await usersRes.json();
-          setUsers(result.data?.users || []);
+          setUsers(result.users || []);
+        }
+        if (companiesRes.ok) {
+          const result = await companiesRes.json();
+          setCompanies(result.companies || []);
         }
       } catch (err) {
         console.error("Failed to load admin data:", err);
@@ -81,36 +132,119 @@ export default function Admin() {
     }
 
     fetchData();
-  }, []);
+  }, [currentUser, authLoading, setLocation]);
 
-  if (loading) {
+  const updateUserRole = async (userId: string, newRole: string) => {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/role`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ role: newRole }),
+      });
+      if (res.ok) {
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      }
+    } catch (err) {
+      console.error("Failed to update role:", err);
+    }
+  };
+
+  const updateUserStatus = async (userId: string, newStatus: string) => {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: newStatus } : u));
+      }
+    } catch (err) {
+      console.error("Failed to update status:", err);
+    }
+  };
+
+  const updateUserCompany = async (userId: string, companyId: string) => {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/company`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ companyId: companyId || null }),
+      });
+      if (res.ok) {
+        const company = companies.find(c => c.id === companyId);
+        setUsers(prev => prev.map(u => 
+          u.id === userId ? { ...u, companyId, companyName: company?.name || null } : u
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to update company:", err);
+    }
+  };
+
+  const createCompany = async () => {
+    if (!newCompanyName.trim()) return;
+    setIsCreatingCompany(true);
+    try {
+      const res = await fetch("/api/admin/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: newCompanyName }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setCompanies(prev => [...prev, result.company]);
+        setNewCompanyName("");
+        setCompanyDialogOpen(false);
+      }
+    } catch (err) {
+      console.error("Failed to create company:", err);
+    } finally {
+      setIsCreatingCompany(false);
+    }
+  };
+
+  const getDisplayName = (u: User) => {
+    if (u.firstName && u.lastName) {
+      return `${u.firstName} ${u.lastName}`;
+    }
+    return u.email || "Unknown User";
+  };
+
+  if (authLoading || loading) {
     return (
       <AppShell>
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </AppShell>
     );
   }
 
+  if (!currentUser || currentUser.role !== "admin") {
+    return null;
+  }
+
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-800">Admin Dashboard</h1>
+          <h1 className="text-2xl font-bold font-serif text-primary">Admin Dashboard</h1>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Cases</CardTitle>
-              <FileText className="h-4 w-4 text-blue-500" />
+              <FileText className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats?.totalCases ?? 0}</div>
-              <p className="text-xs text-muted-foreground">
-                All time processed cases
-              </p>
+              <p className="text-xs text-muted-foreground">All time processed cases</p>
             </CardContent>
           </Card>
 
@@ -120,25 +254,19 @@ export default function Admin() {
               <Users className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.totalUsers ?? 0}</div>
-              <p className="text-xs text-muted-foreground">
-                Registered users
-              </p>
+              <div className="text-2xl font-bold">{users.length}</div>
+              <p className="text-xs text-muted-foreground">Registered users</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Avg. Processing Time</CardTitle>
-              <Clock className="h-4 w-4 text-orange-500" />
+              <CardTitle className="text-sm font-medium">Companies</CardTitle>
+              <Building2 className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {formatDuration(stats?.avgProcessingTimeMs ?? null)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Per case average
-              </p>
+              <div className="text-2xl font-bold">{companies.length}</div>
+              <p className="text-xs text-muted-foreground">Active organizations</p>
             </CardContent>
           </Card>
 
@@ -149,18 +277,69 @@ export default function Admin() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats?.casesProcessedToday ?? 0}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats?.casesProcessedThisWeek ?? 0} this week
-              </p>
+              <p className="text-xs text-muted-foreground">{stats?.casesProcessedThisWeek ?? 0} this week</p>
             </CardContent>
           </Card>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-blue-500" />
+                Companies ({companies.length})
+              </CardTitle>
+              <Dialog open={companyDialogOpen} onOpenChange={setCompanyDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <Plus className="h-4 w-4 mr-1" /> Add Company
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Company</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="company-name">Company Name</Label>
+                      <Input
+                        id="company-name"
+                        value={newCompanyName}
+                        onChange={(e) => setNewCompanyName(e.target.value)}
+                        placeholder="Enter company name"
+                      />
+                    </div>
+                    <Button onClick={createCompany} disabled={isCreatingCompany || !newCompanyName.trim()}>
+                      {isCreatingCompany && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      Create Company
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </CardHeader>
+            <CardContent>
+              {companies.length > 0 ? (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {companies.map((company) => (
+                    <div key={company.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="font-medium">{company.name}</p>
+                        <p className="text-xs text-muted-foreground">Created {formatDate(company.createdAt)}</p>
+                      </div>
+                      <Badge className={statusColors[company.status]}>{company.status}</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No companies created yet</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-blue-500" />
+                <TrendingUp className="h-5 w-5 text-primary" />
                 Processing Time Report
               </CardTitle>
             </CardHeader>
@@ -168,86 +347,22 @@ export default function Admin() {
               {processingReport ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="text-center p-3 bg-slate-50 rounded-lg">
-                      <p className="text-sm text-slate-500">Average</p>
-                      <p className="text-lg font-semibold">
-                        {formatDuration(processingReport.averageTimeMs)}
-                      </p>
+                    <div className="text-center p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Average</p>
+                      <p className="text-lg font-semibold">{formatDuration(processingReport.averageTimeMs)}</p>
                     </div>
-                    <div className="text-center p-3 bg-slate-50 rounded-lg">
-                      <p className="text-sm text-slate-500">Fastest</p>
-                      <p className="text-lg font-semibold text-green-600">
-                        {formatDuration(processingReport.minTimeMs)}
-                      </p>
+                    <div className="text-center p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Fastest</p>
+                      <p className="text-lg font-semibold text-green-600">{formatDuration(processingReport.minTimeMs)}</p>
                     </div>
-                    <div className="text-center p-3 bg-slate-50 rounded-lg">
-                      <p className="text-sm text-slate-500">Slowest</p>
-                      <p className="text-lg font-semibold text-orange-600">
-                        {formatDuration(processingReport.maxTimeMs)}
-                      </p>
+                    <div className="text-center p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Slowest</p>
+                      <p className="text-lg font-semibold text-orange-600">{formatDuration(processingReport.maxTimeMs)}</p>
                     </div>
                   </div>
-
-                  {processingReport.casesByDay.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">Cases by Day</h4>
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {processingReport.casesByDay.slice(-10).map((day) => (
-                          <div
-                            key={day.date}
-                            className="flex items-center justify-between p-2 bg-slate-50 rounded"
-                          >
-                            <span className="text-sm">{formatDate(day.date)}</span>
-                            <div className="flex items-center gap-4">
-                              <span className="text-sm font-medium">{day.count} cases</span>
-                              <span className="text-xs text-slate-500">
-                                avg: {formatDuration(day.avgTimeMs)}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
-                <p className="text-slate-500">No processing data available</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-green-500" />
-                Users ({users.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {users.length > 0 ? (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {users.map((user) => (
-                    <div
-                      key={user.id}
-                      className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium">{user.displayName}</p>
-                        <p className="text-sm text-slate-500">@{user.username}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {user.role}
-                        </span>
-                        <p className="text-xs text-slate-400 mt-1">
-                          {formatDate(user.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-slate-500">No users found</p>
+                <p className="text-muted-foreground">No processing data available</p>
               )}
             </CardContent>
           </Card>
@@ -255,32 +370,78 @@ export default function Admin() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Summary</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-green-500" />
+              User Management ({users.length})
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-600">This Month</p>
-                <p className="text-3xl font-bold text-blue-700">
-                  {stats?.casesProcessedThisMonth ?? 0}
-                </p>
-                <p className="text-xs text-blue-500">cases processed</p>
+            {users.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2 font-medium text-sm">User</th>
+                      <th className="text-left p-2 font-medium text-sm">Role</th>
+                      <th className="text-left p-2 font-medium text-sm">Status</th>
+                      <th className="text-left p-2 font-medium text-sm">Company</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr key={u.id} className="border-b last:border-0">
+                        <td className="p-2">
+                          <div>
+                            <p className="font-medium">{getDisplayName(u)}</p>
+                            <p className="text-xs text-muted-foreground">{u.email}</p>
+                          </div>
+                        </td>
+                        <td className="p-2">
+                          <Select value={u.role} onValueChange={(v) => updateUserRole(u.id, v)}>
+                            <SelectTrigger className="w-36">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="user">User</SelectItem>
+                              <SelectItem value="services">Services</SelectItem>
+                              <SelectItem value="company">Company Admin</SelectItem>
+                              <SelectItem value="admin">Administrator</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="p-2">
+                          <Select value={u.status} onValueChange={(v) => updateUserStatus(u.id, v)}>
+                            <SelectTrigger className="w-28">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="inactive">Inactive</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="p-2">
+                          <Select value={u.companyId || ""} onValueChange={(v) => updateUserCompany(u.id, v)}>
+                            <SelectTrigger className="w-40">
+                              <SelectValue placeholder="No company" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">No company</SelectItem>
+                              {companies.map(c => (
+                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <p className="text-sm text-green-600">This Week</p>
-                <p className="text-3xl font-bold text-green-700">
-                  {stats?.casesProcessedThisWeek ?? 0}
-                </p>
-                <p className="text-xs text-green-500">cases processed</p>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <p className="text-sm text-purple-600">Today</p>
-                <p className="text-3xl font-bold text-purple-700">
-                  {stats?.casesProcessedToday ?? 0}
-                </p>
-                <p className="text-xs text-purple-500">cases processed</p>
-              </div>
-            </div>
+            ) : (
+              <p className="text-muted-foreground">No users found</p>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -487,7 +487,7 @@ function getLastName(defendantName: string): string {
 }
 
 // Get all cases (active by default) - sorted alphabetically by last name
-app.get('/api/cases', async (req, res) => {
+app.get('/api/cases', isAuthenticated, async (req: any, res) => {
   res.set('Cache-Control', 'no-store');
   try {
     const filter = req.query.filter as string || 'active';
@@ -582,7 +582,7 @@ app.get('/api/debug/document-ai', async (req, res) => {
 });
 
 // Delete multiple cases
-app.delete('/api/cases', async (req, res) => {
+app.delete('/api/cases', isAuthenticated, async (req: any, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -598,7 +598,7 @@ app.delete('/api/cases', async (req, res) => {
 });
 
 // Mark case complete/active
-app.patch('/api/cases/:id/complete', async (req, res) => {
+app.patch('/api/cases/:id/complete', isAuthenticated, async (req: any, res) => {
   try {
     const { isComplete } = req.body;
     await storage.markCaseComplete(req.params.id, isComplete === true);
@@ -610,7 +610,7 @@ app.patch('/api/cases/:id/complete', async (req, res) => {
 });
 
 // Assign case to a user
-app.patch('/api/cases/:id/assign', async (req, res) => {
+app.patch('/api/cases/:id/assign', isAuthenticated, async (req: any, res) => {
   try {
     const { assignedToUserId } = req.body;
     const caseId = req.params.id;
@@ -629,7 +629,7 @@ app.patch('/api/cases/:id/assign', async (req, res) => {
 });
 
 // Reprocess a stuck case (re-run analysis on existing documents)
-app.post('/api/cases/:id/reprocess', async (req, res) => {
+app.post('/api/cases/:id/reprocess', isAuthenticated, async (req: any, res) => {
   try {
     const caseId = req.params.id;
     const caseData = await storage.getCaseWithDetails(caseId);
@@ -878,7 +878,7 @@ app.get('/api/statutes', async (req, res) => {
 });
 
 // Get single case with full details
-app.get('/api/cases/:id', async (req, res) => {
+app.get('/api/cases/:id', isAuthenticated, async (req: any, res) => {
   try {
     const caseId = req.params.id;
     const caseData = await storage.getCaseWithDetails(caseId);
