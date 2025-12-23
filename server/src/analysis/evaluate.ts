@@ -210,33 +210,53 @@ export function stripCriminalHistory(text: string): string {
 /**
  * Extract the Officer's Actions section from the "General Offense Hardcopy" section.
  * This is the only text that should appear in the Analysis Summary.
+ * CRITICAL: Only extract from "Officer's Actions" under "General Offense Hardcopy" - 
+ * do NOT use fallback patterns that could match other sections.
  */
 export function extractCaseSynopsis(fullText: string): string | null {
   // First, strip page headers from the text
   const cleanedText = stripPageHeaders(fullText);
   
+  console.log('[extractCaseSynopsis] Starting extraction, text length:', cleanedText.length);
+  
   // Look for the "General Offense Hardcopy" or "General Offense Harcopy" section
-  // Then find "Officer's Actions" within it
+  // This must be found first before we look for Officer's Actions
   const hardcopyPatterns = [
-    /General\s+Offense\s+Har[dc]copy([\s\S]*?)(?=Criminal\s+History|Utah\s+BCI|$)/i,
-    /General\s+Offense\s+Har[dc]copy([\s\S]*)/i,
+    // Match from "General Offense Hardcopy" header until the next major section or end
+    // Be generous and capture everything after the header up to Criminal History, Patrol Screening Sheet, or end
+    /General\s+Offense\s+Har[dc]copy\s*([\s\S]*?)(?=Patrol\s+Screening\s+Sheet|Criminal\s+History\s+Summary|Utah\s+BCI|NCIC|$)/i,
+    /General\s+Offense\s+Har[dc]copy\s*([\s\S]*?)(?=Criminal\s+History|$)/i,
+    /General\s+Offense\s+Har[dc]copy\s*([\s\S]*)/i,
   ];
   
-  let hardcopySection = cleanedText;
+  let hardcopySection: string | null = null;
   
   for (const pattern of hardcopyPatterns) {
     const match = cleanedText.match(pattern);
-    if (match && match[1]) {
+    if (match && match[1] && match[1].trim().length > 100) {
       hardcopySection = match[1];
+      console.log('[extractCaseSynopsis] Found General Offense Hardcopy section, length:', hardcopySection.length);
       break;
     }
   }
   
-  // Now find "Officer's Actions" within the hardcopy section
+  // If we didn't find the General Offense Hardcopy section, return null
+  // We should NOT fall back to searching the entire document
+  if (!hardcopySection) {
+    console.log('[extractCaseSynopsis] Could not find General Offense Hardcopy section');
+    return null;
+  }
+  
+  // Now find "Officer's Actions" within the hardcopy section ONLY
   // Handle both straight and curly apostrophes (',' and ')
+  // Also handle variations like "Officers Actions" (missing apostrophe), "OFFICER'S ACTION" (singular)
   const officerActionsPatterns = [
-    /OFFICER[''\u2019]?S\s+ACTIONS[:\s]*\n?([\s\S]+?)(?=\n\s*(?:EVIDENCE|WITNESSES|ADDITIONAL\s+INFO|PROPERTY|VEHICLES?|SUSPECTS?|VICTIMS?|NARRATIVE|CASE\s+STATUS)\s*[:\n]|$)/i,
-    /OFFICER[''\u2019]?S\s+ACTIONS[:\s]*\n?([\s\S]+?)(?=\n\s*[A-Z]{4,}\s*[:\n]|$)/i,
+    // Standard pattern - ends at next major section header
+    /OFFICER[''\u2019]?S?\s+ACTIONS?[:\s]*\n?([\s\S]+?)(?=\n\s*(?:EVIDENCE|WITNESSES|ADDITIONAL\s+INFO|PROPERTY|VEHICLES?|SUSPECTS?|VICTIMS?|NARRATIVE|CASE\s+STATUS|INVOLVED\s+PERSONS?|LOCATION|DATE|TIME)\s*[:\n])/i,
+    // Pattern that ends at any uppercase section header (4+ chars)
+    /OFFICER[''\u2019]?S?\s+ACTIONS?[:\s]*\n?([\s\S]+?)(?=\n\s*[A-Z][A-Z\s]{3,}[:\n])/i,
+    // Greedy pattern for when Officer's Actions is last in section
+    /OFFICER[''\u2019]?S?\s+ACTIONS?[:\s]*\n?([\s\S]+)/i,
   ];
   
   for (const pattern of officerActionsPatterns) {
@@ -250,26 +270,15 @@ export function extractCaseSynopsis(fullText: string): string | null {
       // Remove any criminal history mentions that might have slipped in
       actions = stripCriminalHistory(actions);
       
+      // Ensure we have meaningful content (not just whitespace or very short text)
       if (actions.length > 20 && actions.length < 15000) {
+        console.log('[extractCaseSynopsis] Found Officer\'s Actions, length:', actions.length);
         return actions;
       }
     }
   }
   
-  // Fallback: try to find "Officer's Actions" anywhere in the document
-  for (const pattern of officerActionsPatterns) {
-    const match = cleanedText.match(pattern);
-    if (match && match[1]) {
-      let actions = match[1].trim();
-      actions = stripPageHeaders(actions);
-      actions = stripCriminalHistory(actions);
-      
-      if (actions.length > 20 && actions.length < 15000) {
-        return actions;
-      }
-    }
-  }
-  
+  console.log('[extractCaseSynopsis] Could not find Officer\'s Actions within General Offense Hardcopy section');
   return null;
 }
 
