@@ -15,36 +15,60 @@ export type PriorsSummary = {
   incidents: PriorIncident[];
 };
 
+/**
+ * Extract criminal history ONLY from specific Criminal History sections in the document.
+ * CRITICAL: Only extract from clearly marked Criminal History sections like:
+ * - "Criminal History Summary"
+ * - "Adult Criminal History"  
+ * - "Utah BCI"
+ * - "UTAH CRIMINAL HISTORY RECORD"
+ * Do NOT extract from other document sections like Officer's Actions, Patrol Screening, etc.
+ */
 export function parseUtahCriminalHistory(text: string): PriorsSummary | null {
-  // Try multiple patterns to find criminal history section
-  const patterns = [
-    /UTAH\s+CRIMINAL\s+HISTORY\s+RECORD/i,
-    /Criminal\s+history\s*[-:]/i,
-    /CRIMINAL\s+HISTORY/i,
-    /prior\s+(?:arrests?|convictions?|offenses?)/i,
+  console.log('[parseUtahCriminalHistory] Starting extraction, text length:', text.length);
+  
+  // First, try to extract only the Criminal History section using bounded patterns
+  // These patterns capture from the section header until the next major section
+  const sectionPatterns = [
+    // Utah Criminal History Record section - ends at next major section
+    /UTAH\s+CRIMINAL\s+HISTORY\s+RECORD\s*([\s\S]*?)(?=\n\s*(?:General\s+Offense|Patrol\s+Screening|Officer[''\u2019]?s?\s+Actions?|EVIDENCE|WITNESSES|NARRATIVE|END\s+OF\s+REPORT)\s*|\n\s*={3,}|\s*$)/i,
+    // Criminal History Summary section - common in police reports
+    /Criminal\s+History\s+Summary\s*[:\-–]?\s*([\s\S]*?)(?=\n\s*(?:General\s+Offense|Patrol\s+Screening|Officer[''\u2019]?s?\s+Actions?|EVIDENCE|WITNESSES|NARRATIVE|END\s+OF\s+REPORT)\s*|\s*$)/i,
+    // Adult Criminal History section 
+    /Adult\s+Criminal\s+History\s*(?:\(Utah\s+BCI\))?\s*[:\-–]?\s*([\s\S]*?)(?=\n\s*(?:General\s+Offense|Patrol\s+Screening|Officer[''\u2019]?s?\s+Actions?|EVIDENCE|WITNESSES|NARRATIVE|END\s+OF\s+REPORT)\s*|\s*$)/i,
+    // Utah BCI section
+    /Utah\s+BCI\s*[:\-–]?\s*([\s\S]*?)(?=\n\s*(?:General\s+Offense|Patrol\s+Screening|Officer[''\u2019]?s?\s+Actions?|EVIDENCE|WITNESSES|NARRATIVE|END\s+OF\s+REPORT)\s*|\s*$)/i,
+    // NCIC section (must be clearly labeled)
+    /\bNCIC\s+(?:Record|History|Criminal)\s*[:\-–]?\s*([\s\S]*?)(?=\n\s*(?:General\s+Offense|Patrol\s+Screening|Officer[''\u2019]?s?\s+Actions?|EVIDENCE|WITNESSES|NARRATIVE)\s*|\s*$)/i,
+    // Criminal History with colon/dash - common inline format
+    /Criminal\s+[Hh]istory\s*[-–:]\s*([\s\S]*?)(?=\n\s*(?:General\s+Offense|Patrol\s+Screening|Officer[''\u2019]?s?\s+Actions?|EVIDENCE|WITNESSES|NARRATIVE|Involved\s+Persons?|Location|Synopsis)\s*|\n\n\n|\s*$)/i,
   ];
   
-  let section = '';
-  let foundIdx = -1;
+  let section: string | null = null;
   
-  for (const pattern of patterns) {
+  for (const pattern of sectionPatterns) {
     const match = text.match(pattern);
-    if (match && match.index !== undefined) {
-      foundIdx = match.index;
-      section = text.slice(foundIdx);
+    if (match && match[1] && match[1].trim().length > 20) {
+      section = match[1].trim();
+      console.log('[parseUtahCriminalHistory] Found criminal history section, length:', section.length);
       break;
     }
   }
   
-  if (foundIdx < 0) return null;
+  // If no bounded section found, return null - do NOT fall back to searching entire document
+  if (!section) {
+    console.log('[parseUtahCriminalHistory] Could not find dedicated Criminal History section');
+    return null;
+  }
 
-  // Try structured incident parsing first
+  // Try structured incident parsing first (for detailed BCI records)
   const incidentRegex = /Incident\s+(\d+)\s+of\s+(\d+)/gi;
   const matches = Array.from(section.matchAll(incidentRegex));
 
   const incidents: PriorIncident[] = [];
 
   if (matches.length > 0) {
+    console.log('[parseUtahCriminalHistory] Found', matches.length, 'structured incidents');
     for (let i = 0; i < matches.length; i += 1) {
       const start = matches[i].index ?? 0;
       const end = i + 1 < matches.length ? (matches[i + 1].index ?? section.length) : section.length;
@@ -59,6 +83,7 @@ export function parseUtahCriminalHistory(text: string): PriorsSummary | null {
     // "Criminal history - 16 arrests. Convictions: '22 MB RT WVC - 221701631, ..."
     const inlineCharges = parseInlineCriminalHistory(section);
     if (inlineCharges.length > 0) {
+      console.log('[parseUtahCriminalHistory] Found', inlineCharges.length, 'inline charges');
       incidents.push({
         incidentLabel: 'Criminal History Summary',
         charges: inlineCharges,
@@ -67,6 +92,7 @@ export function parseUtahCriminalHistory(text: string): PriorsSummary | null {
   }
 
   const chargeCount = incidents.reduce((n, it) => n + it.charges.length, 0);
+  console.log('[parseUtahCriminalHistory] Total charges found:', chargeCount);
   return chargeCount > 0 ? { incidentCount: incidents.length, chargeCount, incidents } : null;
 }
 
