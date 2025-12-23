@@ -56,16 +56,22 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-const uploadsDir = path.join(process.cwd(), 'uploads');
+// Determine uploads directory - check both possible locations for compatibility
+// Files may be in server/uploads (when running from root) or uploads (when running from server dir)
+const serverUploadsDir = path.join(process.cwd(), 'server', 'uploads');
+const rootUploadsDir = path.join(process.cwd(), 'uploads');
+
+// Use server/uploads if it exists and has content, otherwise use root uploads
+const uploadsDir = fs.existsSync(path.join(serverUploadsDir, 'cases')) ? serverUploadsDir : rootUploadsDir;
 fs.mkdirSync(uploadsDir, { recursive: true });
+fs.mkdirSync(path.join(uploadsDir, 'cases'), { recursive: true });
+console.log('[UPLOADS] Using uploads directory:', uploadsDir);
 app.use('/uploads', express.static(uploadsDir));
 
 const upload = multer({ dest: path.join(uploadsDir, 'tmp') });
 
 function getUploadDir(): string {
-  const dir = path.join(process.cwd(), 'uploads');
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  return uploadsDir;
 }
 
 // Format name as "Last Name, First Name"
