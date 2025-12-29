@@ -505,8 +505,10 @@ function buildUtahLegUrl(citation: string): string | null {
   if (!m) return null;
   
   const titleNum = m[1].toUpperCase(); // Utah uses uppercase for title letters (78A not 78a)
-  const chapterNum = m[2];
-  const sectionNum = m[3];
+  // Utah's website uses lowercase for chapter letters in URLs (e.g., "6a" not "6A")
+  const chapterNum = m[2].toLowerCase();
+  // Section also uses lowercase in URL path
+  const sectionNum = m[3].toLowerCase();
   
   // Build URL: https://le.utah.gov/xcode/Title{title}/Chapter{chapter}/{title}-{chapter}-S{section}.html
   return `https://le.utah.gov/xcode/Title${titleNum}/Chapter${chapterNum}/${titleNum}-${chapterNum}-S${sectionNum}.html`;
