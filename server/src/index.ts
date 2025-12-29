@@ -1291,30 +1291,32 @@ app.post('/api/cases/upload', isAuthenticated, getCurrentUser, upload.array('pdf
             const statutes: AnalysisStatute[] = analysisObj.statutes || [];
             const violationsToCreate: ViolationToCreate[] = [];
             
-            // Create a map of code to statute for quick lookup
+            // Create a map of code to statute for quick lookup (normalized to lowercase for case-insensitive matching)
             const statuteMap = new Map<string, string>();
             const statuteUrlMap = new Map<string, string | null>();
             const statuteTitleMap = new Map<string, string | null>();
             for (const st of statutes) {
-              if (st && st.code && st.text) {
-                statuteMap.set(st.code, st.text);
+              const normalizedCode = st.code?.toLowerCase();
+              if (normalizedCode && st.text) {
+                statuteMap.set(normalizedCode, st.text);
               }
-              if (st && st.code && st.url) {
-                statuteUrlMap.set(st.code, st.url);
+              if (normalizedCode && st.url) {
+                statuteUrlMap.set(normalizedCode, st.url);
               }
-              if (st && st.code && st.title) {
-                statuteTitleMap.set(st.code, st.title);
+              if (normalizedCode && st.title) {
+                statuteTitleMap.set(normalizedCode, st.title);
               }
             }
             
             // Match screening charges with statute analysis
             for (const charge of screeningCharges) {
+              const normalizedChargeCode = charge.code.toLowerCase();
               const matchingElement = elements.find((el: AnalysisElement) => 
-                el.code && (el.code === charge.code || el.code.includes(charge.code) || charge.code.includes(el.code))
+                el.code && (el.code.toLowerCase() === normalizedChargeCode || el.code.toLowerCase().includes(normalizedChargeCode) || normalizedChargeCode.includes(el.code.toLowerCase()))
               );
               
-              const statuteText = statuteMap.get(charge.code) || null;
-              const statuteUrlVal = statuteUrlMap.get(charge.code) || null;
+              const statuteText = statuteMap.get(normalizedChargeCode) || null;
+              const statuteUrlVal = statuteUrlMap.get(normalizedChargeCode) || null;
               const result = matchingElement?.result;
               const elems: AnalysisElementResult[] = result?.elements || [];
               const overallMet = result?.overall === 'met';
@@ -1343,9 +1345,10 @@ app.post('/api/cases/upload', isAuthenticated, getCurrentUser, upload.array('pdf
               for (const el of elements) {
                 const result = el.result;
                 const elems: AnalysisElementResult[] = result?.elements || [];
-                const statuteText = statuteMap.get(el.code) || null;
-                const statuteUrlEl = statuteUrlMap.get(el.code) || null;
-                const statuteTitle = statuteTitleMap.get(el.code) || null;
+                const normalizedElCode = el.code?.toLowerCase() || '';
+                const statuteText = statuteMap.get(normalizedElCode) || null;
+                const statuteUrlEl = statuteUrlMap.get(normalizedElCode) || null;
+                const statuteTitle = statuteTitleMap.get(normalizedElCode) || null;
                 
                 violationsToCreate.push({
                   caseId: newCase.id,
@@ -1370,9 +1373,10 @@ app.post('/api/cases/upload', isAuthenticated, getCurrentUser, upload.array('pdf
             // Note: These are fallback citations which may be from criminal history, so mark as historical
             if (violationsToCreate.length === 0 && citations.length > 0) {
               for (const c of citations) {
-                const statuteText = statuteMap.get(c.normalizedKey) || null;
-                const statuteUrlCit = statuteUrlMap.get(c.normalizedKey) || null;
-                const statuteTitleCit = statuteTitleMap.get(c.normalizedKey) || null;
+                const normalizedCitCode = c.normalizedKey?.toLowerCase() || '';
+                const statuteText = statuteMap.get(normalizedCitCode) || null;
+                const statuteUrlCit = statuteUrlMap.get(normalizedCitCode) || null;
+                const statuteTitleCit = statuteTitleMap.get(normalizedCitCode) || null;
                 violationsToCreate.push({
                   caseId: newCase.id,
                   code: c.normalizedKey || c.raw || 'Unknown',
