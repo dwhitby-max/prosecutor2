@@ -112,13 +112,10 @@ export default function UploadPage() {
       setProgress(100);
       setCurrentStep(STEPS.length - 1);
 
-      if (result.caseIds && result.caseIds.length > 0) {
-        setTimeout(() => {
-          setLocation(`/analysis/${result.caseIds[0]}`);
-        }, 800);
-      } else {
+      // Always redirect back to dashboard after upload
+      setTimeout(() => {
         setLocation('/');
-      }
+      }, 800);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
       setIsAnalyzing(false);
