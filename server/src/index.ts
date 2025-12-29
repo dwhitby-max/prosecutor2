@@ -108,43 +108,121 @@ function parseIdentity(text: string): { caseNumber: string | null; defendantName
   // Parse defendant name - try multiple formats, output as "Last, First"
   // Support letters, hyphens, apostrophes, periods (for initials), and spaces
   let defendantName: string | null = null;
+  const suffixes = ['Jr', 'Jr.', 'Sr', 'Sr.', 'II', 'III', 'IV'];
   
-  // Try "Last, First" or "Last, First Middle" format (already in correct format)
-  // Matches: "Doe, John", "Doe, John A.", "Doe, John Andrew Jr."
-  const lastFirstMatch = text.match(/Defendant\s*[:\-]?\s*([A-Z][a-zA-Z\-'\.]+),\s*([A-Z][a-zA-Z\-'\.\s]+)/i);
-  if (lastFirstMatch) {
-    const lastName = lastFirstMatch[1].trim();
-    const firstName = lastFirstMatch[2].trim();
-    defendantName = `${lastName}, ${firstName}`;
-  } else {
-    // Try "First Last" or "First Middle Last" format - need to swap
-    // Capture everything after "Defendant:" that looks like a name
-    const nameBlockMatch = text.match(/Defendant\s*[:\-]?\s*([A-Z][a-zA-Z\-'\.\s]+?)(?=\s*(?:DOB|Date|Address|Case|\n|$))/i);
-    if (nameBlockMatch && nameBlockMatch[1]) {
-      const namePart = nameBlockMatch[1].trim();
+  // Helper to clean and validate name
+  const cleanName = (name: string): string => {
+    return name
+      .split(/[\n\r]/)[0]  // Take only first line
+      .replace(/\s+/g, ' ')  // Normalize spaces
+      .replace(/[^a-zA-Z\s,.\-']/g, '')  // Remove special chars
+      .trim();
+  };
+  
+  // Helper to format name as "Last, First"
+  const formatAsLastFirst = (name: string): string | null => {
+    const cleaned = cleanName(name);
+    if (!cleaned || cleaned.length < 3) return null;
+    
+    // Already in "Last, First" format
+    if (cleaned.includes(',')) {
+      return cleaned;
+    }
+    
+    // Convert "First Last" to "Last, First"
+    const parts = cleaned.split(/\s+/).filter(p => p.length > 0);
+    if (parts.length < 2) return null;
+    
+    // Check for suffix
+    let suffix = '';
+    let lastNameIdx = parts.length - 1;
+    if (suffixes.includes(parts[lastNameIdx]) || suffixes.includes(parts[lastNameIdx] + '.')) {
+      suffix = ' ' + parts[lastNameIdx];
+      lastNameIdx--;
+    }
+    
+    if (lastNameIdx >= 1) {
+      const lastName = parts[lastNameIdx];
+      const firstName = parts.slice(0, lastNameIdx).join(' ');
+      return `${lastName}, ${firstName}${suffix}`;
+    }
+    return null;
+  };
+  
+  // Utah-specific name patterns - these are the fields used in Utah police documents
+  // IMPORTANT: We look for arrestee/subject name fields, NOT officer fields
+  // Note: We use explicit patterns rather than lookbehinds due to JS regex limitations
+  const utahNamePatterns = [
+    // "NAME USED AT ARREST:" - most reliable for arrest records
+    /NAME\s+USED\s+AT\s+ARREST[:\s]+([A-Za-z][A-Za-z\-'\.\s,]+?)(?=\s*(?:AGENCY|CHARGE|DATE|\n|$))/i,
+    // "NAME USED AT COURT:" 
+    /NAME\s+USED\s+AT\s+COURT[:\s]+([A-Za-z][A-Za-z\-'\.\s,]+?)(?=\s*(?:LAW|AGENCY|DATE|\n|$))/i,
+    // BCI format - name appears after certain headers (look for "last, first" pattern)
+    /(?:TRUE\s+NAME|FULL\s+NAME|LEGAL\s+NAME)[:\s]+([A-Za-z][A-Za-z\-'\.\s,]+?)(?=\s*(?:DOB|DATE|ALIAS|\n|$))/i,
+    // Arrestee name field
+    /ARRESTEE[:\s]+([A-Za-z][A-Za-z\-'\.\s,]+?)(?=\s*(?:DOB|DATE|ADDRESS|AGE|\n|$))/i,
+    // Subject name field (but not officer subject)
+    /(?:^|\n)SUBJECT[:\s]+([A-Za-z][A-Za-z\-'\.\s,]+?)(?=\s*(?:DOB|DATE|ADDRESS|AGE|\n|$))/i,
+    // Suspect name field
+    /SUSPECT\s+NAME[:\s]+([A-Za-z][A-Za-z\-'\.\s,]+?)(?=\s*(?:DOB|DATE|ADDRESS|AGE|\n|$))/i,
+    // Standard defendant field (fallback)
+    /DEFENDANT[:\s]+([A-Za-z][A-Za-z\-'\.\s,]+?)(?=\s*(?:DOB|DATE|ADDRESS|CASE|\n|$))/i,
+  ];
+  
+  // Officer-related patterns to EXCLUDE - if we find these patterns, skip that match
+  const isOfficerRelatedName = (matchContext: string): boolean => {
+    const officerPatterns = [
+      /OFFICER\s*NAME/i,
+      /ARRESTING\s+OFFICER/i,
+      /OFFICER[:\s]/i,
+      /DEPUTY\s+NAME/i,
+      /DEPUTY[:\s]/i,
+      /REPORTING\s+OFFICER/i,
+      /INVESTIGATING\s+OFFICER/i,
+    ];
+    return officerPatterns.some(p => p.test(matchContext));
+  };
+  
+  // First try Utah-specific patterns
+  for (const pattern of utahNamePatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      // Get context around the match to check for officer-related terms
+      const matchIndex = match.index || 0;
+      const contextStart = Math.max(0, matchIndex - 30);
+      const contextEnd = Math.min(text.length, matchIndex + 30);
+      const matchContext = text.substring(contextStart, contextEnd);
       
-      // If already has comma, assume "Last, First" format
-      if (namePart.includes(',')) {
-        defendantName = namePart;
-      } else {
-        // Split by spaces and identify suffixes
-        const parts = namePart.split(/\s+/).filter(p => p.length > 0);
-        const suffixes = ['Jr', 'Jr.', 'Sr', 'Sr.', 'II', 'III', 'IV'];
-        
-        if (parts.length >= 2) {
-          // Check if last part is a suffix
-          let suffix = '';
-          let lastNameIdx = parts.length - 1;
-          if (suffixes.includes(parts[lastNameIdx]) || suffixes.includes(parts[lastNameIdx] + '.')) {
-            suffix = ' ' + parts[lastNameIdx];
-            lastNameIdx--;
-          }
-          
-          if (lastNameIdx >= 1) {
-            const lastName = parts[lastNameIdx];
-            const firstName = parts.slice(0, lastNameIdx).join(' ');
-            defendantName = `${lastName}, ${firstName}${suffix}`;
-          }
+      // Skip if this looks like an officer name field
+      if (isOfficerRelatedName(matchContext)) {
+        console.log(`[parseIdentity] Skipping officer-related match: ${match[1]}`);
+        continue;
+      }
+      
+      const formatted = formatAsLastFirst(match[1]);
+      if (formatted && formatted.length >= 5) {
+        defendantName = formatted;
+        console.log(`[parseIdentity] Found defendant name using Utah pattern: ${defendantName}`);
+        break;
+      }
+    }
+  }
+  
+  // If still no name, try legacy patterns
+  if (!defendantName) {
+    // Try "Last, First" or "Last, First Middle" format (already in correct format)
+    const lastFirstMatch = text.match(/Defendant\s*[:\-]?\s*([A-Z][a-zA-Z\-'\.]+),\s*([A-Z][a-zA-Z\-'\.\s]+)/i);
+    if (lastFirstMatch) {
+      const lastName = lastFirstMatch[1].trim();
+      const firstName = lastFirstMatch[2].trim();
+      defendantName = `${lastName}, ${firstName}`;
+    } else {
+      // Try "First Last" or "First Middle Last" format
+      const nameBlockMatch = text.match(/Defendant\s*[:\-]?\s*([A-Z][a-zA-Z\-'\.\s]+?)(?=\s*(?:DOB|Date|Address|Case|\n|$))/i);
+      if (nameBlockMatch && nameBlockMatch[1]) {
+        const formatted = formatAsLastFirst(nameBlockMatch[1]);
+        if (formatted) {
+          defendantName = formatted;
         }
       }
     }
@@ -196,10 +274,19 @@ function parseIdentityFromText(text: string): { caseNumber: string | null; defen
   
   // Try multiple patterns for defendant name - output as "Last, First"
   // Be VERY restrictive to avoid capturing narrative text
+  // UTAH-SPECIFIC PATTERNS FIRST - these are the fields used in Utah police documents
   const namePatterns = [
+    // Utah BCI / Police document patterns - HIGHEST PRIORITY
+    { pattern: /NAME\s+USED\s+AT\s+ARREST[:\s]+([A-Z][a-zA-Z\-'\.\s,]+?)(?=\s*(?:AGENCY|CHARGE|DATE|\n|$))/i, format: 'name_block' },
+    { pattern: /NAME\s+USED\s+AT\s+COURT[:\s]+([A-Z][a-zA-Z\-'\.\s,]+?)(?=\s*(?:LAW|AGENCY|DATE|\n|$))/i, format: 'name_block' },
+    { pattern: /(?:TRUE\s+NAME|FULL\s+NAME|LEGAL\s+NAME)[:\s]+([A-Z][a-zA-Z\-'\.\s,]+?)(?=\s*(?:DOB|DATE|ALIAS|\n|$))/i, format: 'name_block' },
+    { pattern: /ARRESTEE[:\s]+([A-Z][a-zA-Z\-'\.\s,]+?)(?=\s*(?:DOB|DATE|ADDRESS|AGE|\n|$))/i, format: 'name_block' },
+    { pattern: /(?:^|\n)SUBJECT[:\s]+([A-Z][a-zA-Z\-'\.\s,]+?)(?=\s*(?:DOB|DATE|ADDRESS|AGE|\n|$))/i, format: 'name_block' },
+    { pattern: /SUSPECT\s+NAME[:\s]+([A-Z][a-zA-Z\-'\.\s,]+?)(?=\s*(?:DOB|DATE|ADDRESS|AGE|\n|$))/i, format: 'name_block' },
     // "Last, First" or "Last, First Middle" - most reliable
     { pattern: /Defendant[:\s]+([A-Z][a-z]+),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z\.]+)?)/i, format: 'last_first' },
-    { pattern: /Name[:\s]+([A-Z][a-z]+),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z\.]+)?)/i, format: 'last_first' },
+    // Generic "Name:" field - will be filtered by officer check below
+    { pattern: /(?:^|\n)Name[:\s]+([A-Z][a-z]+),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z\.]+)?)/i, format: 'last_first' },
     // "First Last" after "also" pattern (e.g., "also Dave McKay White")
     { pattern: /also\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i, format: 'first_middle_last' },
     // "D and his dad (also Dave McKay White" - extract from parenthetical
@@ -209,9 +296,35 @@ function parseIdentityFromText(text: string): { caseNumber: string | null; defen
     { pattern: /STATE\s+(?:OF\s+)?UTAH\s+v\.?\s+([A-Z][a-z]+)\s+([A-Z][a-z]+)/i, format: 'first_last' },
   ];
   
+  // Officer-related patterns to EXCLUDE
+  const isOfficerRelatedContext = (matchContext: string): boolean => {
+    const officerPatterns = [
+      /OFFICER\s*NAME/i,
+      /ARRESTING\s+OFFICER/i,
+      /OFFICER[:\s]/i,
+      /DEPUTY\s+NAME/i,
+      /DEPUTY[:\s]/i,
+      /REPORTING\s+OFFICER/i,
+      /INVESTIGATING\s+OFFICER/i,
+    ];
+    return officerPatterns.some(p => p.test(matchContext));
+  };
+  
   for (const { pattern, format } of namePatterns) {
     const match = text.match(pattern);
     if (match && match[1]) {
+      // Get context around the match to check for officer-related terms
+      const matchIndex = match.index || 0;
+      const contextStart = Math.max(0, matchIndex - 30);
+      const contextEnd = Math.min(text.length, matchIndex + 30);
+      const matchContext = text.substring(contextStart, contextEnd);
+      
+      // Skip if this looks like an officer name field
+      if (isOfficerRelatedContext(matchContext)) {
+        console.log(`[parseIdentityFromText] Skipping officer-related match: ${match[1]}`);
+        continue;
+      }
+      
       let candidateName: string | null = null;
       
       if (format === 'last_first' && match[2]) {
@@ -243,6 +356,7 @@ function parseIdentityFromText(text: string): { caseNumber: string | null; defen
       // Validate the name before accepting it
       if (candidateName && isValidName(candidateName)) {
         defendantName = cleanName(candidateName);
+        console.log(`[parseIdentityFromText] Found defendant name: ${defendantName}`);
         break;
       }
     }
