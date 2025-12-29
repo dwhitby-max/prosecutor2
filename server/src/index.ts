@@ -850,10 +850,22 @@ app.post('/api/cases/:id/reprocess', isAuthenticated, getCurrentUser, async (req
             criminalHistorySummary = summaryParts.join('; ');
           }
           
-          await storage.updateCaseSummary(caseId, sanitize(summary), sanitize(criminalHistorySummary));
+          // Extract Officer's Actions from the full text (same as upload flow)
+          const fullText = sanitize(analysisObj.fullText || '');
+          let rawOfficerActions: string | null = null;
+          
+          const extractedSynopsis = extractCaseSynopsis(fullText);
+          if (extractedSynopsis && extractedSynopsis.length > 50) {
+            rawOfficerActions = stripCriminalHistory(sanitize(extractedSynopsis));
+            console.log(`[reprocess] Extracted Officer's Actions: ${rawOfficerActions.length} chars`);
+          } else if (isReadable && narrative.length > 50) {
+            rawOfficerActions = stripCriminalHistory(sanitize(narrative));
+            console.log(`[reprocess] Using narrative as Officer's Actions: ${rawOfficerActions.length} chars`);
+          }
+          
+          await storage.updateCaseSummary(caseId, sanitize(summary), sanitize(criminalHistorySummary), rawOfficerActions || undefined);
           
           // Update identity - search full text first (includes case number header), then narrative
-          const fullText = sanitize(analysisObj.fullText || '');
           const textsToSearch = fullText.length > 100 ? [fullText, narrative] : [narrative];
           
           for (const textToSearch of textsToSearch) {
