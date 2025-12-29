@@ -51,6 +51,11 @@ export async function generateCaseSummaryNarrative(
     defendantName: string;
     extractedText: string;
     synopsis?: string | null;
+    violations?: Array<{
+      code: string;
+      chargeName?: string | null;
+      statuteText?: string | null;
+    }>;
   }
 ): Promise<string> {
   const ai = getGeminiClient();
@@ -60,30 +65,41 @@ export async function generateCaseSummaryNarrative(
 
   const startTime = Date.now();
   try {
+    // Build charges section if violations are provided
+    let chargesSection = '';
+    if (caseData.violations && caseData.violations.length > 0) {
+      chargesSection = `
+CHARGES FILED:
+${caseData.violations.map(v => `- ${v.code}${v.chargeName ? `: ${v.chargeName}` : ''}`).join('\n')}
+`;
+    }
+
     const prompt = `You are a legal analyst reviewing a case file. Generate a clear, professional NARRATIVE SUMMARY of the entire case based on the following information.
 
 CASE NUMBER: ${caseData.caseNumber}
 DEFENDANT: ${caseData.defendantName}
-
+${chargesSection}
 EXTRACTED TEXT FROM CASE DOCUMENTS:
 ${caseData.extractedText.slice(0, 12000)}
 
 ${caseData.synopsis ? `OFFICER'S SYNOPSIS:\n${caseData.synopsis}` : ''}
 
-Write a comprehensive narrative summary (3-5 paragraphs) that covers:
+Write a comprehensive narrative summary (4-6 paragraphs) that covers:
 1. What incident occurred and when/where it happened
 2. Who was involved (defendant, officers, witnesses, victims if any)
 3. What the officers observed and what actions they took
 4. What evidence was collected or observed
-5. The outcome of the encounter (arrest, citation, booking, etc.)
+5. **For each charge listed above**: Explain specifically how the defendant's actions violated that code based on the facts. What evidence supports this charge? (e.g., "The defendant committed retail theft when they concealed merchandise worth $X and attempted to leave the store without paying, as witnessed by the loss prevention officer.")
+6. The outcome of the encounter (arrest, citation, booking, etc.)
 
 CRITICAL RULES:
 - Use professional, objective legal language. Focus on FACTS, not opinions.
 - Do NOT include any legal conclusions about guilt or innocence.
-- Do NOT repeat statute text or legal codes - just summarize what happened.
+- Do NOT repeat full statute text - just explain how the facts match the violation.
 - Do NOT include ANY criminal history information (prior arrests, prior convictions, past offenses).
 - Do NOT mention the defendant's criminal record or history in any way.
-- Focus ONLY on THIS incident and what happened during THIS encounter.`;
+- Focus ONLY on THIS incident and what happened during THIS encounter.
+- For each charge, clearly state what specific actions or evidence support that particular violation.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
