@@ -247,6 +247,9 @@ function parseIdentityFromText(text: string): { caseNumber: string | null; defen
   // Words that indicate we've gone past the name into narrative
   const stopWords = ['and', 'the', 'is', 'are', 'was', 'were', 'his', 'her', 'their', 'with', 'also', 'known', 'staying', 'in', 'on', 'at', 'for', 'to', 'from', 'by', 'but', 'or', 'property', 'windows', 'officers', 'car', 'vehicle', 'booked', 'into', 'jail'];
   
+  // Institutional/agency terms that should NEVER appear in defendant names
+  const institutionalTerms = ['police', 'city', 'county', 'state', 'prosecutor', 'attorney', 'agency', 'department', 'dept', 'district', 'court', 'judge', 'sheriff', 'office', 'division', 'bureau', 'municipal', 'federal', 'utah', 'salt', 'lake', 'valley', 'west', 'south', 'north', 'east'];
+  
   // Helper to clean name (remove newlines, extra spaces, and trailing junk)
   const cleanName = (name: string): string => {
     return name
@@ -256,7 +259,7 @@ function parseIdentityFromText(text: string): { caseNumber: string | null; defen
       .trim();
   };
   
-  // Helper to validate a name (should be 2-4 words, no stop words)
+  // Helper to validate a name (should be 2-4 words, no stop words or institutional terms)
   const isValidName = (name: string): boolean => {
     const cleaned = cleanName(name);
     const parts = cleaned.split(/[\s,]+/).filter(p => p.length > 0);
@@ -264,6 +267,13 @@ function parseIdentityFromText(text: string): { caseNumber: string | null; defen
     // Check if any part is a stop word (indicates narrative, not name)
     for (const part of parts) {
       if (stopWords.includes(part.toLowerCase())) return false;
+    }
+    // Check if any part is an institutional term (not a person's name)
+    for (const part of parts) {
+      if (institutionalTerms.includes(part.toLowerCase())) {
+        console.log(`[parseIdentityFromText] Rejecting name with institutional term: "${name}" (found: ${part})`);
+        return false;
+      }
     }
     // Check that all parts look like name parts (capitalized or short)
     for (const part of parts) {
