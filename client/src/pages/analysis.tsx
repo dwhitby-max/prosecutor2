@@ -521,9 +521,8 @@ export default function AnalysisPage() {
                           <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed"
                              dangerouslySetInnerHTML={{
                                __html: data.caseSummaryNarrative
-                                 .replace(/\[\[EVIDENCE\]\]/g, '<mark class="bg-yellow-200 px-0.5 rounded">')
-                                 .replace(/\[\[\/EVIDENCE\]\]/g, '</mark>')
-                                 .replace(/<mark>/g, '<mark class="bg-yellow-200 px-0.5 rounded">')
+                                 .replace(/\{\{HL\}\}/g, '<span style="background-color: #fef08a; padding: 1px 3px; border-radius: 2px;">')
+                                 .replace(/\{\{\/HL\}\}/g, '</span>')
                              }}
                           />
                         </div>

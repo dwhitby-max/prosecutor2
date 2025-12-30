@@ -86,17 +86,17 @@ ${caseData.synopsis ? `OFFICER'S SYNOPSIS:\n${caseData.synopsis}` : ''}
 
 Write a CONCISE narrative summary (2-3 paragraphs maximum) that covers:
 1. Brief overview: what happened, when, where, and who was involved
-2. **For each charge**: The specific evidence proving the violation - wrap this in <mark> tags:
+2. **For each charge**: The specific evidence proving the violation - wrap this in {{HL}} and {{/HL}} tags:
    - Items/property involved with descriptions
    - Dollar values or quantities
    - The specific actions taken
-   Example: "The defendant <mark>concealed an air freshener ($5) and figurine ($90) in her bag and exited without paying</mark>."
+   Example: "The defendant {{HL}}concealed an air freshener ($5) and figurine ($90) in her bag and exited without paying{{/HL}}."
 3. Outcome (arrest, citation, etc.)
 
 CRITICAL RULES:
 - Keep it SHORT - no more than 3 paragraphs total
 - CAREFULLY READ the extracted text - the item details and values ARE there
-- Wrap ONLY the evidence portions in <mark> tags (items, values, actions proving the charge)
+- Wrap ONLY the evidence portions in {{HL}} and {{/HL}} tags
 - Use professional, objective language - facts only
 - Do NOT include criminal history or prior offenses
 - Do NOT repeat statute text
