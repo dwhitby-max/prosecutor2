@@ -80,7 +80,7 @@ CASE NUMBER: ${caseData.caseNumber}
 DEFENDANT: ${caseData.defendantName}
 ${chargesSection}
 EXTRACTED TEXT FROM CASE DOCUMENTS:
-${caseData.extractedText.slice(0, 12000)}
+${caseData.extractedText.slice(0, 25000)}
 
 ${caseData.synopsis ? `OFFICER'S SYNOPSIS:\n${caseData.synopsis}` : ''}
 
@@ -90,21 +90,22 @@ Write a comprehensive narrative summary (4-6 paragraphs) that covers:
 3. What the officers observed and what actions they took
 4. What evidence was collected or observed
 5. **For each charge listed above**: Provide a DETAILED explanation of how the defendant violated that specific code, including:
-   - The specific items, substances, or property involved (with exact descriptions)
-   - Dollar values, quantities, or amounts when available
+   - The specific items, substances, or property involved (with exact descriptions like "air freshener", "figurine", etc.)
+   - Dollar values, quantities, or amounts (e.g., "$90", "total value of $150")
    - Specific actions the defendant took that constitute the violation
    - Names of witnesses or victims who observed the violation
-   Example: "The defendant committed Retail Theft (76-6-602) when they concealed a Samsung Galaxy phone valued at $899 and two pairs of Nike shoes valued at $240 in a shopping bag. Loss prevention officer John Smith observed the defendant pass the point of sale without paying and exit through the front doors."
 6. The outcome of the encounter (arrest, citation, booking, etc.)
 
 CRITICAL RULES:
+- CAREFULLY READ the entire extracted text above. The item details, values, and evidence ARE in the document - find them.
+- Do NOT say information is missing if it appears anywhere in the text above.
 - Use professional, objective legal language. Focus on FACTS, not opinions.
 - Do NOT include any legal conclusions about guilt or innocence.
 - Do NOT repeat full statute text - just explain how the facts match the violation.
 - Do NOT include ANY criminal history information (prior arrests, prior convictions, past offenses).
 - Do NOT mention the defendant's criminal record or history in any way.
 - Focus ONLY on THIS incident and what happened during THIS encounter.
-- For each charge, you MUST include specific details: item descriptions, dollar amounts, quantities, witness names, and exact actions taken.`;
+- For each charge, you MUST extract and include specific details from the document: item descriptions, dollar amounts, quantities, witness names, and exact actions taken.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
