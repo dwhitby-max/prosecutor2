@@ -61,6 +61,9 @@ export function stripCriminalHistory(text: string): string {
   result = result.replace(/USE\s+OF\s+THE\s+INFORMATION\s+CONTAINED\s+IN\s+THIS\s+RECORD[\s\S]*?(?:PLEASE\s+CONTACT\s+THE\s+CONTRIBUTING\s+AGENCY|CLASS\s+B\s+MISDEMEANOR)[^.]*\.?/gi, '');
   result = result.replace(/USE\s+OF\s+THE\s+INFORMATION\s+CONTAINED\s+IN\s+THIS\s+RECORD[\s\S]*?(?:FBI\s+NO\.\s*\d+\w*)/gi, '');
   
+  // Remove the "SINCE THE BUREAU'S FILES..." disclaimer
+  result = result.replace(/SINCE\s+THE\s+BUREAU['']?S\s+FILES\s+ARE\s+REVISED[\s\S]*?PLEASE\s+CONTACT\s+THE\s+CONTRIBUTING\s+AGENCY/gi, '');
+  
   // Remove STATE IDENT / SID / FBI NO patterns
   result = result.replace(/(?:DAY\s+)?STATE\s+IDENT\.?\s*(?:NO\.?)?\s*\(?SID\)?\s*\d+[\s\S]*?FBI\s+NO\.?\s*\d+\w*/gi, '');
   result = result.replace(/SID\s*\d+[\s\S]*?FBI\s+NO\.?\s*\d+\w*/gi, '');
