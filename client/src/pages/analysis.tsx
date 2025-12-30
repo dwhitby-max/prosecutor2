@@ -523,6 +523,7 @@ export default function AnalysisPage() {
                                __html: data.caseSummaryNarrative
                                  .replace(/\[\[EVIDENCE\]\]/g, '<mark class="bg-yellow-200 px-0.5 rounded">')
                                  .replace(/\[\[\/EVIDENCE\]\]/g, '</mark>')
+                                 .replace(/<mark>/g, '<mark class="bg-yellow-200 px-0.5 rounded">')
                              }}
                           />
                         </div>

@@ -84,33 +84,23 @@ ${caseData.extractedText.slice(0, 25000)}
 
 ${caseData.synopsis ? `OFFICER'S SYNOPSIS:\n${caseData.synopsis}` : ''}
 
-Write a comprehensive narrative summary (4-6 paragraphs) that covers:
-1. What incident occurred and when/where it happened
-2. Who was involved (defendant, officers, witnesses, victims if any)
-3. What the officers observed and what actions they took
-4. What evidence was collected or observed
-5. **For each charge listed above**: Provide a DETAILED explanation of how the defendant violated that specific code, including:
-   - The specific items, substances, or property involved (with exact descriptions like "air freshener", "figurine", etc.)
-   - Dollar values, quantities, or amounts (e.g., "$90", "total value of $150")
-   - Specific actions the defendant took that constitute the violation
-   - Names of witnesses or victims who observed the violation
-6. The outcome of the encounter (arrest, citation, booking, etc.)
-
-CRITICAL FORMATTING REQUIREMENT:
-- When describing evidence of a code violation (the specific actions, items stolen, values, and facts that prove the charge), wrap that text in [[EVIDENCE]] and [[/EVIDENCE]] tags.
-- Example: "The defendant [[EVIDENCE]]concealed an air freshener valued at $5 and a decorative figurine valued at $90 in her bag, then exited the store without paying[[/EVIDENCE]]."
-- Only wrap the actual evidence sentences, not the entire paragraph.
+Write a CONCISE narrative summary (2-3 paragraphs maximum) that covers:
+1. Brief overview: what happened, when, where, and who was involved
+2. **For each charge**: The specific evidence proving the violation - wrap this in <mark> tags:
+   - Items/property involved with descriptions
+   - Dollar values or quantities
+   - The specific actions taken
+   Example: "The defendant <mark>concealed an air freshener ($5) and figurine ($90) in her bag and exited without paying</mark>."
+3. Outcome (arrest, citation, etc.)
 
 CRITICAL RULES:
-- CAREFULLY READ the entire extracted text above. The item details, values, and evidence ARE in the document - find them.
-- Do NOT say information is missing if it appears anywhere in the text above.
-- Use professional, objective legal language. Focus on FACTS, not opinions.
-- Do NOT include any legal conclusions about guilt or innocence.
-- Do NOT repeat full statute text - just explain how the facts match the violation.
-- Do NOT include ANY criminal history information (prior arrests, prior convictions, past offenses).
-- Do NOT mention the defendant's criminal record or history in any way.
-- Focus ONLY on THIS incident and what happened during THIS encounter.
-- For each charge, you MUST extract and include specific details from the document: item descriptions, dollar amounts, quantities, witness names, and exact actions taken.`;
+- Keep it SHORT - no more than 3 paragraphs total
+- CAREFULLY READ the extracted text - the item details and values ARE there
+- Wrap ONLY the evidence portions in <mark> tags (items, values, actions proving the charge)
+- Use professional, objective language - facts only
+- Do NOT include criminal history or prior offenses
+- Do NOT repeat statute text
+- Focus ONLY on THIS incident`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
