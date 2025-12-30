@@ -54,6 +54,17 @@ export function stripCriminalHistory(text: string): string {
   
   let result = text;
   
+  // Remove everything from "IDENTIFICATION CAUTIONS" onwards (includes criminal history)
+  result = result.replace(/IDENTIFICATION\s+CAUTIONS[\s\S]*/gi, '');
+  
+  // Remove the BCI/FBI legal disclaimer text
+  result = result.replace(/USE\s+OF\s+THE\s+INFORMATION\s+CONTAINED\s+IN\s+THIS\s+RECORD[\s\S]*?(?:PLEASE\s+CONTACT\s+THE\s+CONTRIBUTING\s+AGENCY|CLASS\s+B\s+MISDEMEANOR)[^.]*\.?/gi, '');
+  result = result.replace(/USE\s+OF\s+THE\s+INFORMATION\s+CONTAINED\s+IN\s+THIS\s+RECORD[\s\S]*?(?:FBI\s+NO\.\s*\d+\w*)/gi, '');
+  
+  // Remove STATE IDENT / SID / FBI NO patterns
+  result = result.replace(/(?:DAY\s+)?STATE\s+IDENT\.?\s*(?:NO\.?)?\s*\(?SID\)?\s*\d+[\s\S]*?FBI\s+NO\.?\s*\d+\w*/gi, '');
+  result = result.replace(/SID\s*\d+[\s\S]*?FBI\s+NO\.?\s*\d+\w*/gi, '');
+  
   // Common section headers that should stop criminal history removal
   const sectionBoundary = '(?:OFFICER[\'\'\\u2019]?S\\s+ACTIONS|EVIDENCE|WITNESSES|ADDITIONAL\\s+INFO|PROPERTY|VEHICLES?|SUSPECTS?|VICTIMS?|NARRATIVE|CASE\\s+STATUS|SYNOPSIS|SUMMARY|INCIDENT|REPORT|$)';
   
