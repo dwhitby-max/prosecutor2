@@ -21,7 +21,7 @@ statutesRouter.get("/ut/:citation", async (req, res) => {
     const text = htmlToText(html);
     if (!text) return res.status(500).json({ ok: false, error: "Could not parse statute text", url });
 
-    return res.json({ ok: true, citation, url, text });
+    return res.json({ ok: true, citation, url, statuteText: text });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return res.status(500).json({ ok: false, error: msg });
