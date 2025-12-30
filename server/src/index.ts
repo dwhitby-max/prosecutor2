@@ -477,6 +477,8 @@ function extractChargesFromScreeningSheet(text: string): Array<{ code: string; c
     '76-9-702': 'Disorderly Conduct',
     '41-6a-502': 'DUI',
     '41-6a-501': 'Driving Under Influence',
+    '41-6a-401.3': 'Failure to Remain at Scene of Accident',
+    '41-6A-401.3': 'Failure to Remain at Scene of Accident',
   };
   
   // Common charge abbreviations from screening sheets
