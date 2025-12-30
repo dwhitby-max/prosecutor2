@@ -243,8 +243,9 @@ const ocrCorrections: Record<string, string> = {
 };
 
 const knownCharges: Record<string, string> = {
-  '58-37-8': 'Prohibited Acts - Controlled Substances',
-  '58-37a-5': 'Drug Paraphernalia',
+  '58-37-8': 'Possession of Controlled Substance',
+  '58-37a-5': 'Possession of Drug Paraphernalia',
+  '58-37A-5': 'Possession of Drug Paraphernalia',
   '76-6-602': 'Retail Theft',
   '76-6-404': 'Theft',
   '76-6-206': 'Criminal Trespass',
@@ -267,6 +268,19 @@ const knownCharges: Record<string, string> = {
   '77-7-21': 'Failure to Appear on Citation',
   '64-13-29': 'Parole Violation',
 };
+
+function normalizeChargeCode(code: string): string {
+  return code.replace(/\([^)]+\)$/, '');
+}
+
+function lookupChargeName(code: string): string {
+  const normalized = normalizeChargeCode(code);
+  return knownCharges[normalized] || 
+         knownCharges[normalized.toLowerCase()] || 
+         knownCharges[code] ||
+         knownCharges[code.toLowerCase()] ||
+         `Utah Code ${code}`;
+}
 
 const chargeAbbreviations: Record<string, string> = {
   'RT': 'Retail Theft',
@@ -298,11 +312,8 @@ const VALID_UTAH_TITLES = new Set([
   '62A', '63', '64', '72', '76', '77', '78A', '78B'
 ]);
 
-const VALID_SUFFIXES = new Set([
-  'MB', 'MA', 'MC', 'F1', 'F2', 'F3', 'IN', 'RT', 'PACS', 'DP', 'DUI', 'CM', 'DC', 
-  'RE', 'FA', 'NC', 'PO', 'LI', 'JU', 'NO', 'UT',
-  'RETA', 'FAIL', 'NCIC', 'JURI', 'SIGN', 'POSS', 'RECE', 'OPER', 'DRIV', 'REFU',
-  'ASSA', 'DISO', 'CRIM', 'BURG', 'ROBB', 'DRUG', 'PARA', 'THEF', 'FORG', 'FRAU'
+const VALID_CLASS_SUFFIXES = new Set([
+  'MB', 'MA', 'MC', 'F1', 'F2', 'F3', 'IN'
 ]);
 
 function isValidChargeCode(title: string, chapter: string, section: string, suffix: string): boolean {
@@ -335,8 +346,8 @@ function isValidChargeCode(title: string, chapter: string, section: string, suff
     return false;
   }
   
-  if (!VALID_SUFFIXES.has(suffix.toUpperCase())) {
-    console.log(`Rejecting unknown suffix: ${title}-${chapter}-${section} (${suffix})`);
+  if (!VALID_CLASS_SUFFIXES.has(suffix.toUpperCase())) {
+    console.log(`Rejecting non-class suffix: ${title}-${chapter}-${section} (${suffix})`);
     return false;
   }
   
@@ -446,10 +457,7 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
       chargeClass = classMap[suffix];
     }
     
-    let chargeName = chargeAbbreviations[suffix] || 
-                     knownCharges[fullCode] || 
-                     knownCharges[fullCode.toLowerCase()] ||
-                     `Utah Code ${fullCode}`;
+    let chargeName = lookupChargeName(fullCode);
     
     charges.push({ code: fullCode, chargeName, chargeClass });
     console.log('Found CURRENT charge:', fullCode, chargeName, chargeClass || '(no class)', 'suffix:', suffix);
