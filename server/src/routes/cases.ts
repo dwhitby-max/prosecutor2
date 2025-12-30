@@ -62,6 +62,8 @@ function formatDefendantName(firstName: string, lastName: string): string {
 function parseIdentity(text: string): { caseNumber: string | null; defendantName: string | null; bookedIntoJail: boolean | null } {
   let caseNumber: string | null = null;
   const casePatterns = [
+    /\bWV\d{2}[-]\d{5,6}\b/i,
+    /Case\s*#\s*:?\s*(WV\d{2}[-]\d{5,6})/i,
     /Case\s*#\s*:?\s*(\d{4}[\-]\d{5})/i,
     /Case\s*#\s*:?\s*(\d{2}[\-]\d{5})/i,
     /Case\s+(\d{4}[\-]\d{5})/i,
@@ -73,21 +75,37 @@ function parseIdentity(text: string): { caseNumber: string | null; defendantName
   
   for (const pattern of casePatterns) {
     const match = text.match(pattern);
-    if (match && match[1] && match[1].length >= 6) {
-      caseNumber = match[1].trim();
-      break;
+    if (match) {
+      const captured = match[1] || match[0];
+      if (captured && captured.length >= 6) {
+        caseNumber = captured.trim();
+        break;
+      }
     }
   }
 
   let defendantName: string | null = null;
   const suffixes = ['Jr', 'Jr.', 'Sr', 'Sr.', 'II', 'III', 'IV'];
   
+  const nameStopwords = ['AUTHORIZED', 'PERSON', 'OFFICER', 'ADDRESS', 'PHONE', 'DOB', 'DATE', 'CASE', 'CHARGE', 'AGENCY', 'LAW', 'THE', 'AND', 'FOR', 'WITH', 'FROM', 'INTO', 'UPON', 'HORIZED', 'IZED'];
+  
   const cleanName = (name: string): string => {
-    return name
+    let cleaned = name
       .split(/[\n\r]/)[0]
       .replace(/\s+/g, ' ')
       .replace(/[^a-zA-Z\s,.\-']/g, '')
       .trim();
+    
+    for (const stopword of nameStopwords) {
+      const stopIdx = cleaned.toUpperCase().indexOf(stopword);
+      if (stopIdx > 0) {
+        cleaned = cleaned.substring(0, stopIdx).trim();
+      }
+    }
+    
+    cleaned = cleaned.replace(/\s+$/, '').replace(/,\s*$/, '');
+    
+    return cleaned;
   };
   
   const formatAsLastFirst = (name: string): string | null => {
@@ -258,15 +276,64 @@ interface ExtractedCharge {
   chargeClass: string | null;
 }
 
+const VALID_UTAH_TITLES = new Set([
+  '7', '9', '10', '13', '17', '24', '26', '31A', '32B', '34', '41', '53', '58', '59', 
+  '62A', '63', '64', '72', '76', '77', '78A', '78B'
+]);
+
+const VALID_SUFFIXES = new Set(['MB', 'MA', 'MC', 'F1', 'F2', 'F3', 'IN', 'RT', 'PACS', 'DP', 'DUI', 'CM', 'DC', 'RE', 'FA', 'NC', 'PO', 'LI', 'JU', 'NO', 'UT']);
+
+function isValidChargeCode(title: string, chapter: string, section: string, suffix: string): boolean {
+  const titleNum = parseInt(title.replace(/[a-z]/gi, ''), 10);
+  const chapterNum = parseInt(chapter.replace(/[a-z]/gi, ''), 10);
+  const sectionNum = parseInt(section.replace(/\.\d+$/, ''), 10);
+  
+  if (chapterNum >= 1 && chapterNum <= 12 && sectionNum >= 1 && sectionNum <= 31) {
+    if (sectionNum >= 1900 && sectionNum <= 2099) {
+      console.log(`Rejecting date-like code: ${title}-${chapter}-${section}`);
+      return false;
+    }
+  }
+  
+  if (titleNum >= 100 || (title.length === 3 && !title.match(/\d{2}[a-z]/i))) {
+    console.log(`Rejecting invalid title: ${title}-${chapter}-${section}`);
+    return false;
+  }
+  
+  const normalizedTitle = title.replace(/^0+/, '').toUpperCase();
+  if (!VALID_UTAH_TITLES.has(normalizedTitle) && titleNum < 41) {
+    if (titleNum < 7 || (titleNum > 34 && titleNum < 41)) {
+      console.log(`Rejecting non-Utah title: ${title}-${chapter}-${section}`);
+      return false;
+    }
+  }
+  
+  if (chapterNum > 500 || sectionNum > 2000) {
+    console.log(`Rejecting phone/invalid number: ${title}-${chapter}-${section}`);
+    return false;
+  }
+  
+  if (!VALID_SUFFIXES.has(suffix.toUpperCase())) {
+    console.log(`Rejecting unknown suffix: ${title}-${chapter}-${section} (${suffix})`);
+    return false;
+  }
+  
+  return true;
+}
+
 function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
   const charges: ExtractedCharge[] = [];
   const seenCodes = new Set<string>();
   
-  const chargeTablePattern = /(\d{2,3}[a-z]?)\s*[-–]\s*(\d{1,4}[a-z]?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*[\(\[]?\s*([A-Z]{2})\s*[\)\]]?/gi;
+  const chargeTablePattern = /(\d{2,3}[a-z]?)\s*[-–]\s*(\d{1,4}[a-z]?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*[\(\[]?\s*([A-Z]{2,4})\s*[\)\]]?/gi;
   
   let match;
   while ((match = chargeTablePattern.exec(text)) !== null) {
     let [, title, chapter, section, suffix] = match;
+    
+    if (!isValidChargeCode(title, chapter, section, suffix)) {
+      continue;
+    }
     
     let fullCode = `${title}-${chapter}-${section}`;
     
