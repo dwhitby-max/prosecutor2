@@ -113,7 +113,11 @@ function parseIdentity(text: string): { caseNumber: string | null; defendantName
     if (!cleaned || cleaned.length < 3) return null;
     
     if (cleaned.includes(',')) {
-      return cleaned;
+      const [lastName, firstName] = cleaned.split(',').map(s => s.trim());
+      if (lastName && lastName.length >= 2 && firstName && firstName.length >= 3) {
+        return cleaned;
+      }
+      return null;
     }
     
     const parts = cleaned.split(/\s+/).filter(p => p.length > 0);
@@ -129,7 +133,9 @@ function parseIdentity(text: string): { caseNumber: string | null; defendantName
     if (lastNameIdx >= 1) {
       const lastName = parts[lastNameIdx];
       const firstName = parts.slice(0, lastNameIdx).join(' ');
-      return `${lastName}, ${firstName}${suffix}`;
+      if (firstName.length >= 3) {
+        return `${lastName}, ${firstName}${suffix}`;
+      }
     }
     return null;
   };
