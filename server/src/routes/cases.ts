@@ -241,7 +241,7 @@ const knownCharges: Record<string, string> = {
   '58-37a-5': 'Drug Paraphernalia',
   '76-6-602': 'Retail Theft',
   '76-6-404': 'Theft',
-  '76-6-206': 'Criminal Mischief',
+  '76-6-206': 'Criminal Trespass',
   '76-8-305': 'Interference with Arresting Officer',
   '76-9-702': 'Disorderly Conduct',
   '76-10-503': 'Carrying a Concealed Dangerous Weapon',
@@ -249,6 +249,17 @@ const knownCharges: Record<string, string> = {
   '76-5-103': 'Aggravated Assault',
   '41-6a-502': 'DUI',
   '41-6a-517': 'Open Container',
+  '41-6a-401.3': 'Failure to Remain at Accident Scene',
+  '41-6a-401': 'Duty to Stop at Accident',
+  '53-3-217': 'No Valid License in Possession',
+  '53-3-227': 'Driving on Suspended License',
+  '76-6-408': 'Receiving Stolen Property',
+  '76-5-109': 'Child Abuse',
+  '76-10-508': 'Discharge of Firearm',
+  '41-12a-302': 'No Proof of Insurance',
+  '41-1a-1303': 'Driving Without Registration',
+  '77-7-21': 'Failure to Appear on Citation',
+  '64-13-29': 'Parole Violation',
 };
 
 const chargeAbbreviations: Record<string, string> = {
