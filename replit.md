@@ -80,6 +80,7 @@ A full-stack web application for legal case screening and analysis. The system a
 
 ### Statute Display
 - **API Field Alignment**: Fixed field name mismatch in `/api/statutes/:citation` endpoint (returns `statuteText` instead of `text`).
+- **Validated Statute Fetching**: Refactored `/api/statutes/ut/:citation` route to use `lookupUtahCode()` function which properly extracts statute text from `#secdiv` element, validates content against navigation HTML leakage, and caches valid results. Previously the route did raw HTML stripping that returned navigation content.
 
 ### TypeScript Compatibility
 - **React 18 Types**: Downgraded to @types/react@18.3.14 for compatibility with lucide-react icons. The app uses React 19 runtime but React 18 types until upstream libraries add full React 19 type support.

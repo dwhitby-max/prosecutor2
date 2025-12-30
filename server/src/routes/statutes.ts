@@ -1,51 +1,36 @@
 import express from "express";
+import { lookupUtahCode } from "../analysis/statutes.js";
 
 export const statutesRouter = express.Router();
 
 statutesRouter.get("/ut/:citation", async (req, res) => {
   try {
     const citation = String(req.params.citation || "").trim().replace(/[–—]/g, "-");
-    const m = citation.match(/^(\d{1,3})-(\d{1,4}[a-z]?)-(.+)$/i);
+    const m = citation.match(/^(\d{1,3}[a-z]?)-(\d{1,4}[a-z]?)-(.+)$/i);
     if (!m) return res.status(400).json({ ok: false, error: "Bad citation format" });
 
-    const title = m[1];
-    const chapter = m[2];
-    const section = m[3];
+    const result = await lookupUtahCode(citation);
+    
+    if (!result.ok) {
+      const status = result.reason === 'not_found' ? 404 : 
+                     result.reason === 'rate_limited' ? 429 : 500;
+      return res.status(status).json({ 
+        ok: false, 
+        error: result.details || result.reason,
+        url: result.urlTried 
+      });
+    }
 
-    const url = `https://le.utah.gov/xcode/Title${title}/Chapter${chapter}/${title}-${chapter}-S${section}.html`;
-
-    const r = await fetch(url);
-    const html = await r.text();
-    if (!r.ok) return res.status(404).json({ ok: false, error: `HTTP ${r.status}`, url });
-
-    const text = htmlToText(html);
-    if (!text) return res.status(500).json({ ok: false, error: "Could not parse statute text", url });
-
-    return res.json({ ok: true, citation, url, statuteText: text });
+    return res.json({ 
+      ok: true, 
+      citation: result.citation, 
+      url: result.url, 
+      statuteText: result.text,
+      title: result.title,
+      source: result.source
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return res.status(500).json({ ok: false, error: msg });
   }
 });
-
-function htmlToText(html: string): string {
-  let t = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
-    .replace(/<\s*\/p\s*>/gi, "\n")
-    .replace(/<[^>]+>/g, " ");
-
-  t = t
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s+\n/g, "\n\n")
-    .trim();
-
-  return t;
-}
