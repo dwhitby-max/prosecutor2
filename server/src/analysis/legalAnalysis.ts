@@ -70,7 +70,7 @@ export async function generateCaseSummaryNarrative(
     if (caseData.violations && caseData.violations.length > 0) {
       chargesSection = `
 CHARGES FILED:
-${caseData.violations.map(v => `- ${v.code}${v.chargeName ? `: ${v.chargeName}` : ''}`).join('\n')}
+${caseData.violations.map(v => `- ${v.code}`).join('\n')}
 `;
     }
 
@@ -143,7 +143,7 @@ export async function generateLegalAnalysis(
   try {
     const chargesDescription = caseData.violations.map((v, i) => {
       return `
-CHARGE ${i + 1}: ${v.code}${v.chargeName ? ` - ${v.chargeName}` : ''}
+CHARGE ${i + 1}: ${v.code}
 Source: ${v.source}
 ${v.statuteText ? `STATUTE TEXT:\n${v.statuteText.slice(0, 2000)}` : 'Statute text not available.'}
 `;
