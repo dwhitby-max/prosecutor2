@@ -337,14 +337,78 @@ function isValidChargeCode(title: string, chapter: string, section: string, suff
   return true;
 }
 
+function extractScreeningSheetSection(text: string): string | null {
+  const screeningHeaderPatterns = [
+    /Patrol\s*Screening\s*Sheet/i,
+    /SCREENING\s*SHEET/i,
+    /Case\s*Screening\s*Form/i,
+  ];
+  
+  const endMarkerPatterns = [
+    /Criminal\s*History/i,
+    /Utah\s*BCI/i,
+    /NCIC/i,
+    /Identification\s*Cautions/i,
+    /Prior\s*Arrests/i,
+    /Previous\s*Convictions/i,
+    /Arrest\s*History/i,
+    /Court\s*Records/i,
+  ];
+  
+  let startIndex = -1;
+  for (const pattern of screeningHeaderPatterns) {
+    const match = text.match(pattern);
+    if (match && match.index !== undefined) {
+      startIndex = match.index;
+      console.log('[extractScreeningSheet] Found screening sheet header at position:', startIndex);
+      break;
+    }
+  }
+  
+  if (startIndex === -1) {
+    console.log('[extractScreeningSheet] No screening sheet header found');
+    return null;
+  }
+  
+  const textFromStart = text.slice(startIndex);
+  
+  let endIndex = textFromStart.length;
+  for (const pattern of endMarkerPatterns) {
+    const match = textFromStart.match(pattern);
+    if (match && match.index !== undefined && match.index > 100) {
+      if (match.index < endIndex) {
+        endIndex = match.index;
+        console.log('[extractScreeningSheet] Found end marker at position:', endIndex);
+      }
+    }
+  }
+  
+  const maxSectionLength = 8000;
+  if (endIndex > maxSectionLength) {
+    endIndex = maxSectionLength;
+    console.log('[extractScreeningSheet] Truncating section to max length:', maxSectionLength);
+  }
+  
+  const section = textFromStart.slice(0, endIndex);
+  console.log('[extractScreeningSheet] Extracted section length:', section.length);
+  return section;
+}
+
 function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
   const charges: ExtractedCharge[] = [];
   const seenCodes = new Set<string>();
   
+  const screeningSection = extractScreeningSheetSection(text);
+  const searchText = screeningSection || text.slice(0, 10000);
+  
+  if (!screeningSection) {
+    console.log('[extractCharges] No screening section found, using first 10000 chars as fallback');
+  }
+  
   const chargeTablePattern = /(\d{2,3}[a-z]?)\s*[-–]\s*(\d{1,4}[a-z]?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*[\(\[]?\s*([A-Z]{2,4})\s*[\)\]]?/gi;
   
   let match;
-  while ((match = chargeTablePattern.exec(text)) !== null) {
+  while ((match = chargeTablePattern.exec(searchText)) !== null) {
     let [, title, chapter, section, suffix] = match;
     
     if (!isValidChargeCode(title, chapter, section, suffix)) {
