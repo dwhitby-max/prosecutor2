@@ -60,6 +60,18 @@ export default function Dashboard() {
     fetchCases();
   }, []);
 
+  // Poll for updates when there are processing cases
+  useEffect(() => {
+    const hasProcessingCases = cases.some(c => c.status === 'processing');
+    if (!hasProcessingCases) return;
+
+    const interval = setInterval(() => {
+      fetchCases();
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [cases]);
+
   const toggleSelect = (id: string, isActive: boolean) => {
     if (isActive) {
       const newSelected = new Set(selectedActiveForDelete);
