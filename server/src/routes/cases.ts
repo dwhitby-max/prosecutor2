@@ -348,17 +348,19 @@ function extractScreeningSheetSection(text: string): string | null {
     /Patrol\s*Screening\s*Sheet/i,
     /SCREENING\s*SHEET/i,
     /Case\s*Screening\s*Form/i,
+    /-- 1 of \d+ --/i,
   ];
   
   const endMarkerPatterns = [
-    /Criminal\s*History/i,
-    /Utah\s*BCI/i,
-    /NCIC/i,
-    /Identification\s*Cautions/i,
-    /Prior\s*Arrests/i,
-    /Previous\s*Convictions/i,
-    /Arrest\s*History/i,
-    /Court\s*Records/i,
+    /\n\s*Criminal\s*History\s*[-–:]/i,
+    /\n\s*Criminal\s*History\s*\n/i,
+    /\n\s*Utah\s*BCI\s*[-–:\n]/i,
+    /\n\s*NCIC\s*[-–:\n]/i,
+    /\n\s*Identification\s*Cautions\s*[-–:\n]/i,
+    /\n\s*Prior\s*Arrests\s*[-–:\n]/i,
+    /\n\s*Previous\s*Convictions\s*[-–:\n]/i,
+    /\n\s*Arrest\s*History\s*[-–:\n]/i,
+    /\n\s*Court\s*Records\s*[-–:\n]/i,
   ];
   
   let startIndex = -1;
@@ -381,7 +383,7 @@ function extractScreeningSheetSection(text: string): string | null {
   let endIndex = textFromStart.length;
   for (const pattern of endMarkerPatterns) {
     const match = textFromStart.match(pattern);
-    if (match && match.index !== undefined && match.index > 100) {
+    if (match && match.index !== undefined && match.index > 200) {
       if (match.index < endIndex) {
         endIndex = match.index;
         console.log('[extractScreeningSheet] Found end marker at position:', endIndex);
@@ -399,6 +401,14 @@ function extractScreeningSheetSection(text: string): string | null {
   console.log('[extractScreeningSheet] Extracted section length:', section.length);
   return section;
 }
+
+const narrativeChargePatterns: Record<string, { code: string; name: string; class: string }> = {
+  'POCS': { code: '58-37-8', name: 'Possession of Controlled Substance', class: 'MA' },
+  'PODP': { code: '58-37a-5', name: 'Possession of Drug Paraphernalia', class: 'MB' },
+  'PWID': { code: '58-37-8', name: 'Possession with Intent to Distribute', class: 'F2' },
+  'DUI': { code: '41-6a-502', name: 'Driving Under the Influence', class: 'MB' },
+  'RT': { code: '76-6-602', name: 'Retail Theft', class: 'MB' },
+};
 
 function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
   const charges: ExtractedCharge[] = [];
@@ -449,6 +459,16 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
     
     charges.push({ code: fullCode, chargeName, chargeClass });
     console.log('Found CURRENT charge:', fullCode, chargeName, chargeClass || '(no class)', 'suffix:', suffix);
+  }
+  
+  for (const [abbrev, info] of Object.entries(narrativeChargePatterns)) {
+    const pattern = new RegExp(`\\b${abbrev}[-–]?(MA|MB|F[1-5])?\\b`, 'gi');
+    if (pattern.test(searchText) && !seenCodes.has(info.code.toUpperCase())) {
+      seenCodes.add(info.code.toUpperCase());
+      const chargeClass = info.class;
+      charges.push({ code: info.code, chargeName: info.name, chargeClass });
+      console.log('Found CURRENT charge from narrative:', info.code, info.name, chargeClass);
+    }
   }
   
   console.log('Total screening sheet charges found:', charges.length, charges.map(c => c.code).join(', ') || 'none');
