@@ -518,9 +518,13 @@ export default function AnalysisPage() {
                       </h3>
                       {data.caseSummaryNarrative ? (
                         <div className="prose prose-sm max-w-none">
-                          <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                            {data.caseSummaryNarrative}
-                          </p>
+                          <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed"
+                             dangerouslySetInnerHTML={{
+                               __html: data.caseSummaryNarrative
+                                 .replace(/\[\[EVIDENCE\]\]/g, '<mark class="bg-yellow-200 px-0.5 rounded">')
+                                 .replace(/\[\[\/EVIDENCE\]\]/g, '</mark>')
+                             }}
+                          />
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground italic">

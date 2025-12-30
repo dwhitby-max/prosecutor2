@@ -96,6 +96,11 @@ Write a comprehensive narrative summary (4-6 paragraphs) that covers:
    - Names of witnesses or victims who observed the violation
 6. The outcome of the encounter (arrest, citation, booking, etc.)
 
+CRITICAL FORMATTING REQUIREMENT:
+- When describing evidence of a code violation (the specific actions, items stolen, values, and facts that prove the charge), wrap that text in [[EVIDENCE]] and [[/EVIDENCE]] tags.
+- Example: "The defendant [[EVIDENCE]]concealed an air freshener valued at $5 and a decorative figurine valued at $90 in her bag, then exited the store without paying[[/EVIDENCE]]."
+- Only wrap the actual evidence sentences, not the entire paragraph.
+
 CRITICAL RULES:
 - CAREFULLY READ the entire extracted text above. The item details, values, and evidence ARE in the document - find them.
 - Do NOT say information is missing if it appears anywhere in the text above.
