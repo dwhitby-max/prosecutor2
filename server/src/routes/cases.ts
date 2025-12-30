@@ -281,7 +281,12 @@ const VALID_UTAH_TITLES = new Set([
   '62A', '63', '64', '72', '76', '77', '78A', '78B'
 ]);
 
-const VALID_SUFFIXES = new Set(['MB', 'MA', 'MC', 'F1', 'F2', 'F3', 'IN', 'RT', 'PACS', 'DP', 'DUI', 'CM', 'DC', 'RE', 'FA', 'NC', 'PO', 'LI', 'JU', 'NO', 'UT']);
+const VALID_SUFFIXES = new Set([
+  'MB', 'MA', 'MC', 'F1', 'F2', 'F3', 'IN', 'RT', 'PACS', 'DP', 'DUI', 'CM', 'DC', 
+  'RE', 'FA', 'NC', 'PO', 'LI', 'JU', 'NO', 'UT',
+  'RETA', 'FAIL', 'NCIC', 'JURI', 'SIGN', 'POSS', 'RECE', 'OPER', 'DRIV', 'REFU',
+  'ASSA', 'DISO', 'CRIM', 'BURG', 'ROBB', 'DRUG', 'PARA', 'THEF', 'FORG', 'FRAU'
+]);
 
 function isValidChargeCode(title: string, chapter: string, section: string, suffix: string): boolean {
   const titleNum = parseInt(title.replace(/[a-z]/gi, ''), 10);
