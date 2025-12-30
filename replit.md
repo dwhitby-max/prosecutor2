@@ -57,7 +57,7 @@ A full-stack web application for legal case screening and analysis. The system a
 
 ## Key Files
 - `server/src/index.ts` - Main server entry point (58 lines, bootstraps route modules)
-- `server/src/routes/cases.ts` - Case management API routes (upload, analysis, CRUD)
+- `server/src/routes/cases.ts` - Case management API routes (upload, analysis, CRUD, charge extraction)
 - `server/src/routes/admin.ts` - Admin dashboard API routes
 - `server/src/routes/statutes.ts` - Utah statute lookup API routes
 - `server/replit_integrations/auth/` - Authentication integration (Replit Auth)
@@ -66,3 +66,20 @@ A full-stack web application for legal case screening and analysis. The system a
 - `client/src/components/layout/app-shell.tsx` - Main layout with role-based navigation
 - `client/src/pages/admin.tsx` - Admin dashboard for user/company management
 - `client/src/pages/company.tsx` - Company dashboard for organization-level view
+
+## Recent Changes (December 2024)
+
+### Charge Extraction Improvements
+- **Screening Sheet Isolation**: Added `extractScreeningSheetSection()` function to identify and isolate only the Patrol Screening Sheet section from documents, preventing charges from criminal history sections bleeding into current case charges.
+- **Section Boundaries**: Stops extraction at markers like "Criminal History", "Utah BCI", "NCIC", "Identification Cautions".
+- **Expanded Charge Suffixes**: VALID_SUFFIXES now includes common abbreviations (RETA, FAIL, NCIC, JURI, POSS, etc.).
+- **Known Charges Dictionary**: Expanded to include proper display names for common Utah codes (41-6a-401.3, 53-3-217, 77-7-21, etc.).
+
+### Defendant Name Parsing
+- **Minimum First Name Length**: Added 3-character minimum validation for first names to prevent partial matches like "ROBERTS, CH" from overwriting complete names like "Roberts, Chandee".
+
+### Statute Display
+- **API Field Alignment**: Fixed field name mismatch in `/api/statutes/:citation` endpoint (returns `statuteText` instead of `text`).
+
+### TypeScript Compatibility
+- **React 18 Types**: Downgraded to @types/react@18.3.14 for compatibility with lucide-react icons. The app uses React 19 runtime but React 18 types until upstream libraries add full React 19 type support.
