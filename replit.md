@@ -56,6 +56,10 @@ A full-stack web application for legal case screening and analysis. The system a
 - **Replit Auth:** Authentication provider supporting Google, GitHub, Apple, and email sign-in.
 
 ## Key Files
+- `server/src/index.ts` - Main server entry point (58 lines, bootstraps route modules)
+- `server/src/routes/cases.ts` - Case management API routes (upload, analysis, CRUD)
+- `server/src/routes/admin.ts` - Admin dashboard API routes
+- `server/src/routes/statutes.ts` - Utah statute lookup API routes
 - `server/replit_integrations/auth/` - Authentication integration (Replit Auth)
 - `shared/models/auth.ts` - User, Company, and Session schemas
 - `client/src/hooks/use-auth.ts` - Frontend authentication hook
