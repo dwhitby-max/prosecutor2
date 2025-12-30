@@ -313,7 +313,7 @@ const VALID_UTAH_TITLES = new Set([
 ]);
 
 const VALID_CLASS_SUFFIXES = new Set([
-  'MB', 'MA', 'MC', 'F1', 'F2', 'F3', 'IN'
+  'MA', 'MB', 'F1', 'F2', 'F3'
 ]);
 
 function isValidChargeCode(title: string, chapter: string, section: string, suffix: string): boolean {
@@ -417,14 +417,17 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
   const charges: ExtractedCharge[] = [];
   const seenCodes = new Set<string>();
   
-  const screeningSection = extractScreeningSheetSection(text);
-  const searchText = screeningSection || text.slice(0, 10000);
+  const first4Pages = text.slice(0, 8000);
+  
+  const screeningSection = extractScreeningSheetSection(first4Pages);
   
   if (!screeningSection) {
-    console.log('[extractCharges] No screening section found, using first 10000 chars as fallback');
-  } else {
-    console.log('[extractCharges] Using screening section, length:', screeningSection.length);
+    console.log('[extractCharges] No screening section found in first 4 pages - returning empty');
+    return [];
   }
+  
+  console.log('[extractCharges] Using screening section, length:', screeningSection.length);
+  const searchText = screeningSection;
   
   const chargeTablePattern = /(\d{2,3}[a-z]?)\s*[-–]\s*(\d{1,4}[a-z]?)\s*[-–]\s*(\d+(?:\.\d+)?(?:\([^)]+\))?)\s*[\(\[]?\s*([A-Z]{2,4})\s*[\)\]]?/gi;
   
