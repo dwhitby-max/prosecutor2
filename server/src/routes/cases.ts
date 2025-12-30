@@ -344,61 +344,53 @@ function isValidChargeCode(title: string, chapter: string, section: string, suff
 }
 
 function extractScreeningSheetSection(text: string): string | null {
-  const screeningHeaderPatterns = [
-    /Patrol\s*Screening\s*Sheet/i,
-    /SCREENING\s*SHEET/i,
-    /Case\s*Screening\s*Form/i,
-    /-- 1 of \d+ --/i,
-  ];
+  const lines = text.split('\n');
+  let startLineIndex = -1;
   
-  const endMarkerPatterns = [
-    /\n\s*Criminal\s*History\s*[-–:]/i,
-    /\n\s*Criminal\s*History\s*\n/i,
-    /\n\s*Utah\s*BCI\s*[-–:\n]/i,
-    /\n\s*NCIC\s*[-–:\n]/i,
-    /\n\s*Identification\s*Cautions\s*[-–:\n]/i,
-    /\n\s*Prior\s*Arrests\s*[-–:\n]/i,
-    /\n\s*Previous\s*Convictions\s*[-–:\n]/i,
-    /\n\s*Arrest\s*History\s*[-–:\n]/i,
-    /\n\s*Court\s*Records\s*[-–:\n]/i,
-  ];
-  
-  let startIndex = -1;
-  for (const pattern of screeningHeaderPatterns) {
-    const match = text.match(pattern);
-    if (match && match.index !== undefined) {
-      startIndex = match.index;
-      console.log('[extractScreeningSheet] Found screening sheet header at position:', startIndex);
+  for (let i = 0; i < lines.length; i++) {
+    const currentLine = lines[i] || '';
+    const nextLine = lines[i + 1] || '';
+    const prevLine = lines[i - 1] || '';
+    const context = `${prevLine} ${currentLine} ${nextLine}`.toLowerCase();
+    
+    if (context.includes('prosecutor') && context.includes('screening sheet')) {
+      startLineIndex = Math.max(0, i - 1);
+      console.log('[extractScreeningSheet] Found multi-line header at line:', startLineIndex);
+      break;
+    }
+    
+    if (/patrol\s*screening\s*sheet/i.test(currentLine)) {
+      startLineIndex = i;
+      console.log('[extractScreeningSheet] Found single-line header at line:', startLineIndex);
+      break;
+    }
+    
+    if (/screening\s*sheet/i.test(currentLine) && i < 50) {
+      startLineIndex = i;
+      console.log('[extractScreeningSheet] Found screening sheet at line:', startLineIndex);
       break;
     }
   }
   
-  if (startIndex === -1) {
+  if (startLineIndex === -1) {
     console.log('[extractScreeningSheet] No screening sheet header found');
     return null;
   }
   
-  const textFromStart = text.slice(startIndex);
+  const endMarkerRegex = /^(CRIMINAL\s*HISTORY|NCIC|NARRATIVE|SUMMARY|UTAH\s*BCI|IDENTIFICATION\s*CAUTIONS|PRIOR\s*ARRESTS|COURT\s*RECORDS|-- 2 of)/i;
   
-  let endIndex = textFromStart.length;
-  for (const pattern of endMarkerPatterns) {
-    const match = textFromStart.match(pattern);
-    if (match && match.index !== undefined && match.index > 200) {
-      if (match.index < endIndex) {
-        endIndex = match.index;
-        console.log('[extractScreeningSheet] Found end marker at position:', endIndex);
-      }
+  let endLineIndex = lines.length;
+  for (let i = startLineIndex + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (endMarkerRegex.test(line)) {
+      endLineIndex = i;
+      console.log('[extractScreeningSheet] Found end marker at line:', endLineIndex, ':', line.slice(0, 40));
+      break;
     }
   }
   
-  const maxSectionLength = 8000;
-  if (endIndex > maxSectionLength) {
-    endIndex = maxSectionLength;
-    console.log('[extractScreeningSheet] Truncating section to max length:', maxSectionLength);
-  }
-  
-  const section = textFromStart.slice(0, endIndex);
-  console.log('[extractScreeningSheet] Extracted section length:', section.length);
+  const section = lines.slice(startLineIndex, endLineIndex).join('\n');
+  console.log('[extractScreeningSheet] Extracted section length:', section.length, 'lines:', endLineIndex - startLineIndex);
   return section;
 }
 
@@ -419,9 +411,11 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
   
   if (!screeningSection) {
     console.log('[extractCharges] No screening section found, using first 10000 chars as fallback');
+  } else {
+    console.log('[extractCharges] Using screening section, length:', screeningSection.length);
   }
   
-  const chargeTablePattern = /(\d{2,3}[a-z]?)\s*[-–]\s*(\d{1,4}[a-z]?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*[\(\[]?\s*([A-Z]{2,4})\s*[\)\]]?/gi;
+  const chargeTablePattern = /(\d{2,3}[a-z]?)\s*[-–]\s*(\d{1,4}[a-z]?)\s*[-–]\s*(\d+(?:\.\d+)?(?:\([^)]+\))?)\s*[\(\[]?\s*([A-Z]{2,4})\s*[\)\]]?/gi;
   
   let match;
   while ((match = chargeTablePattern.exec(searchText)) !== null) {
