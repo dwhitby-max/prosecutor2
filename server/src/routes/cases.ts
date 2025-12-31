@@ -282,23 +282,12 @@ function lookupChargeName(code: string): string {
          `Utah Code ${code}`;
 }
 
-const chargeAbbreviations: Record<string, string> = {
-  'RT': 'Retail Theft',
-  'PACS': 'Prohibited Acts - Controlled Substances',
-  'DP': 'Drug Paraphernalia',
-  'DUI': 'Driving Under the Influence',
-  'CM': 'Criminal Mischief',
-  'DC': 'Disorderly Conduct',
-};
-
 const classMap: Record<string, string> = {
   'MB': 'Class B Misdemeanor',
   'MA': 'Class A Misdemeanor',
-  'MC': 'Class C Misdemeanor',
   'F3': 'Third Degree Felony',
   'F2': 'Second Degree Felony',
   'F1': 'First Degree Felony',
-  'IN': 'Infraction',
 };
 
 interface ExtractedCharge {
@@ -307,202 +296,58 @@ interface ExtractedCharge {
   chargeClass: string | null;
 }
 
-const VALID_UTAH_TITLES = new Set([
-  '7', '9', '10', '13', '17', '24', '26', '31A', '32B', '34', '41', '53', '58', '59', 
-  '62A', '63', '64', '72', '76', '77', '78A', '78B'
-]);
-
-const VALID_CLASS_SUFFIXES = new Set([
-  'MA', 'MB', 'MC', 'F1', 'F2', 'F3', 'F4', 'F5', 'IN'
-]);
-
-function isValidChargeCode(title: string, chapter: string, section: string, suffix: string): boolean {
-  const titleNum = parseInt(title.replace(/[a-z]/gi, ''), 10);
-  const chapterNum = parseInt(chapter.replace(/[a-z]/gi, ''), 10);
-  const sectionNum = parseInt(section.replace(/\.\d+$/, ''), 10);
-  
-  if (chapterNum >= 1 && chapterNum <= 12 && sectionNum >= 1 && sectionNum <= 31) {
-    if (sectionNum >= 1900 && sectionNum <= 2099) {
-      console.log(`Rejecting date-like code: ${title}-${chapter}-${section}`);
-      return false;
-    }
-  }
-  
-  if (titleNum >= 100 || (title.length === 3 && !title.match(/\d{2}[a-z]/i))) {
-    console.log(`Rejecting invalid title: ${title}-${chapter}-${section}`);
-    return false;
-  }
-  
-  const normalizedTitle = title.replace(/^0+/, '').toUpperCase();
-  if (!VALID_UTAH_TITLES.has(normalizedTitle) && titleNum < 41) {
-    if (titleNum < 7 || (titleNum > 34 && titleNum < 41)) {
-      console.log(`Rejecting non-Utah title: ${title}-${chapter}-${section}`);
-      return false;
-    }
-  }
-  
-  if (chapterNum > 500 || sectionNum > 2000) {
-    console.log(`Rejecting phone/invalid number: ${title}-${chapter}-${section}`);
-    return false;
-  }
-  
-  if (!VALID_CLASS_SUFFIXES.has(suffix.toUpperCase())) {
-    console.log(`Rejecting non-class suffix: ${title}-${chapter}-${section} (${suffix})`);
-    return false;
-  }
-  
-  return true;
-}
-
-function extractScreeningSheetSection(text: string): string | null {
-  const lines = text.split('\n');
-  let startLineIndex = -1;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const currentLine = lines[i] || '';
-    const nextLine = lines[i + 1] || '';
-    const prevLine = lines[i - 1] || '';
-    const context = `${prevLine} ${currentLine} ${nextLine}`.toLowerCase();
-    
-    if (context.includes('prosecutor') && context.includes('screening sheet')) {
-      startLineIndex = Math.max(0, i - 1);
-      console.log('[extractScreeningSheet] Found multi-line header at line:', startLineIndex);
-      break;
-    }
-    
-    if (/patrol\s*screening\s*sheet/i.test(currentLine)) {
-      startLineIndex = i;
-      console.log('[extractScreeningSheet] Found single-line header at line:', startLineIndex);
-      break;
-    }
-    
-    if (/screening\s*sheet/i.test(currentLine) && i < 50) {
-      startLineIndex = i;
-      console.log('[extractScreeningSheet] Found screening sheet at line:', startLineIndex);
-      break;
-    }
-  }
-  
-  if (startLineIndex === -1) {
-    console.log('[extractScreeningSheet] No screening sheet header found');
-    return null;
-  }
-  
-  const endMarkerRegex = /^(CRIMINAL\s*HISTORY|NCIC|NARRATIVE|SUMMARY|UTAH\s*BCI|IDENTIFICATION\s*CAUTIONS|PRIOR\s*ARRESTS|COURT\s*RECORDS|-- 2 of)/i;
-  
-  let endLineIndex = lines.length;
-  for (let i = startLineIndex + 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (endMarkerRegex.test(line)) {
-      endLineIndex = i;
-      console.log('[extractScreeningSheet] Found end marker at line:', endLineIndex, ':', line.slice(0, 40));
-      break;
-    }
-  }
-  
-  const section = lines.slice(startLineIndex, endLineIndex).join('\n');
-  console.log('[extractScreeningSheet] Extracted section length:', section.length, 'lines:', endLineIndex - startLineIndex);
-  return section;
-}
-
-const narrativeChargePatterns: Record<string, { code: string; name: string; class: string }> = {
-  'POCS': { code: '58-37-8', name: 'Possession of Controlled Substance', class: 'MA' },
-  'PODP': { code: '58-37a-5', name: 'Possession of Drug Paraphernalia', class: 'MB' },
-  'PWID': { code: '58-37-8', name: 'Possession with Intent to Distribute', class: 'F2' },
-  'DUI': { code: '41-6a-502', name: 'Driving Under the Influence', class: 'MB' },
-  'RT': { code: '76-6-602', name: 'Retail Theft', class: 'MB' },
-};
+const VALID_CLASSES = new Set(['MA', 'MB', 'F1', 'F2', 'F3']);
 
 function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
   const charges: ExtractedCharge[] = [];
   const seenCodes = new Set<string>();
   
-  const first4Pages = text.slice(0, 8000);
+  const first3Pages = text.slice(0, 8000);
   
-  const screeningSection = extractScreeningSheetSection(first4Pages);
-  
-  if (!screeningSection) {
-    console.log('[extractCharges] No screening section found in first 4 pages - returning empty');
+  const offenseIndex = first3Pages.search(/offense\s*information/i);
+  if (offenseIndex === -1) {
+    console.log('[extractCharges] No "Offense Information" section found');
     return [];
   }
   
-  console.log('[extractCharges] Using screening section, length:', screeningSection.length);
-  const searchText = screeningSection;
+  const afterOffense = first3Pages.slice(offenseIndex);
+  const endMatch = afterOffense.search(/\n\s*(defendant|criminal\s*history|narrative|ncic|victim|witness|evidence|officer)/i);
+  const offenseSection = endMatch > 0 ? afterOffense.slice(0, endMatch) : afterOffense.slice(0, 2000);
   
-  const chargeTablePattern = /(\d{2,3}[a-z]?)\s*[-–]\s*(\d{1,4}[a-z]?)\s*[-–]\s*(\d+(?:\.\d+)?(?:\([^)]+\))?)\s*[\(\[]?\s*([A-Z]{2,4})\s*[\)\]]?/gi;
+  console.log('[extractCharges] Found Offense Information section, length:', offenseSection.length);
   
-  let match;
-  while ((match = chargeTablePattern.exec(searchText)) !== null) {
-    let [, title, chapter, section, suffix] = match;
+  const lines = offenseSection.split('\n');
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
     
-    if (!isValidChargeCode(title, chapter, section, suffix)) {
-      continue;
-    }
+    const classMatch = trimmedLine.match(/\b(MA|MB|F1|F2|F3)\s*$/);
+    if (!classMatch) continue;
     
-    let fullCode = `${title}-${chapter}-${section}`;
+    const chargeClass = classMatch[1];
     
-    if (ocrCorrections[fullCode]) {
-      console.log(`OCR correction: ${fullCode} -> ${ocrCorrections[fullCode]}`);
-      fullCode = ocrCorrections[fullCode];
-    } else if (ocrCorrections[`${title}-${chapter}`]) {
-      const corrected = ocrCorrections[`${title}-${chapter}`].split('-');
-      fullCode = `${corrected[0]}-${corrected[1]}-${section}`;
-      console.log(`OCR correction (partial): ${title}-${chapter} -> ${corrected[0]}-${corrected[1]}`);
-    }
+    const codeMatch = trimmedLine.match(/^(\d{1,3}[A-Za-z]?[-–]\d{1,4}[A-Za-z]?[-–]\d+(?:\.\d+)?(?:\([^)]*\))?)/);
+    if (!codeMatch) continue;
     
-    const normalizedCode = fullCode.toUpperCase();
+    const code = codeMatch[1].replace(/–/g, '-');
+    const normalizedCode = code.toUpperCase();
     
     if (seenCodes.has(normalizedCode)) continue;
     seenCodes.add(normalizedCode);
     
-    let chargeClass: string | null = null;
-    if (classMap[suffix]) {
-      chargeClass = classMap[suffix];
-    }
+    const middleText = trimmedLine.slice(codeMatch[0].length, trimmedLine.length - classMatch[0].length).trim();
+    const chargeName = middleText || lookupChargeName(code);
     
-    let chargeName = lookupChargeName(fullCode);
-    
-    charges.push({ code: fullCode, chargeName, chargeClass });
-    console.log('Found CURRENT charge:', fullCode, chargeName, chargeClass || '(no class)', 'suffix:', suffix);
+    charges.push({ 
+      code, 
+      chargeName, 
+      chargeClass: classMap[chargeClass] || chargeClass 
+    });
+    console.log('[extractCharges] Found charge:', code, chargeName, chargeClass);
   }
   
-  for (const [abbrev, info] of Object.entries(narrativeChargePatterns)) {
-    const pattern = new RegExp(`\\b${abbrev}[-–]?(MA|MB|F[1-5])?\\b`, 'gi');
-    if (pattern.test(searchText) && !seenCodes.has(info.code.toUpperCase())) {
-      seenCodes.add(info.code.toUpperCase());
-      const chargeClass = info.class;
-      charges.push({ code: info.code, chargeName: info.name, chargeClass });
-      console.log('Found CURRENT charge from narrative:', info.code, info.name, chargeClass);
-    }
-  }
-  
-  const fallbackPattern = /\b(76|58|41|53|77|78[AB]?)\s*[-–]\s*(\d{1,4}[a-z]?)\s*[-–]\s*(\d+(?:\.\d+)?)\b/gi;
-  let fallbackMatch;
-  while ((fallbackMatch = fallbackPattern.exec(searchText)) !== null) {
-    let [, title, chapter, section] = fallbackMatch;
-    const titleNum = parseInt(title.replace(/[a-z]/gi, ''), 10);
-    const chapterNum = parseInt(chapter.replace(/[a-z]/gi, ''), 10);
-    const sectionNum = parseInt(section.replace(/\.\d+$/, ''), 10);
-    
-    if (chapterNum > 500 || sectionNum > 2000) continue;
-    if (titleNum >= 100) continue;
-    
-    let fullCode = `${title}-${chapter}-${section}`;
-    
-    if (ocrCorrections[fullCode]) {
-      fullCode = ocrCorrections[fullCode];
-    }
-    
-    const normalizedCode = fullCode.toUpperCase();
-    if (seenCodes.has(normalizedCode)) continue;
-    seenCodes.add(normalizedCode);
-    
-    const chargeName = lookupChargeName(fullCode);
-    charges.push({ code: fullCode, chargeName, chargeClass: null });
-    console.log('Found CURRENT charge (fallback):', fullCode, chargeName);
-  }
-  
-  console.log('Total screening sheet charges found:', charges.length, charges.map(c => c.code).join(', ') || 'none');
+  console.log('[extractCharges] Total charges found:', charges.length, charges.map(c => c.code).join(', ') || 'none');
   
   return charges;
 }
