@@ -335,7 +335,13 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
     
     const beforeCode = offenseSection.slice(Math.max(0, codeMatch.index - 15), codeMatch.index);
     if (/example\s*:?\s*$/i.test(beforeCode)) {
-      console.log('[extractCharges] Skipping example code:', fullCode);
+      console.log('[extractCharges] Skipping example code (before):', fullCode);
+      continue;
+    }
+    
+    const afterCodeChar = offenseSection[codeMatch.index + codeMatch[0].length] || '';
+    if (afterCodeChar === ')') {
+      console.log('[extractCharges] Skipping example code (followed by paren):', fullCode);
       continue;
     }
     
