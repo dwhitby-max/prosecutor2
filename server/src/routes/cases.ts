@@ -313,7 +313,7 @@ const VALID_UTAH_TITLES = new Set([
 ]);
 
 const VALID_CLASS_SUFFIXES = new Set([
-  'MA', 'MB', 'F1', 'F2', 'F3'
+  'MA', 'MB', 'MC', 'F1', 'F2', 'F3', 'F4', 'F5', 'IN'
 ]);
 
 function isValidChargeCode(title: string, chapter: string, section: string, suffix: string): boolean {
@@ -474,6 +474,32 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
       charges.push({ code: info.code, chargeName: info.name, chargeClass });
       console.log('Found CURRENT charge from narrative:', info.code, info.name, chargeClass);
     }
+  }
+  
+  const fallbackPattern = /\b(76|58|41|53|77|78[AB]?)\s*[-–]\s*(\d{1,4}[a-z]?)\s*[-–]\s*(\d+(?:\.\d+)?)\b/gi;
+  let fallbackMatch;
+  while ((fallbackMatch = fallbackPattern.exec(searchText)) !== null) {
+    let [, title, chapter, section] = fallbackMatch;
+    const titleNum = parseInt(title.replace(/[a-z]/gi, ''), 10);
+    const chapterNum = parseInt(chapter.replace(/[a-z]/gi, ''), 10);
+    const sectionNum = parseInt(section.replace(/\.\d+$/, ''), 10);
+    
+    if (chapterNum > 500 || sectionNum > 2000) continue;
+    if (titleNum >= 100) continue;
+    
+    let fullCode = `${title}-${chapter}-${section}`;
+    
+    if (ocrCorrections[fullCode]) {
+      fullCode = ocrCorrections[fullCode];
+    }
+    
+    const normalizedCode = fullCode.toUpperCase();
+    if (seenCodes.has(normalizedCode)) continue;
+    seenCodes.add(normalizedCode);
+    
+    const chargeName = lookupChargeName(fullCode);
+    charges.push({ code: fullCode, chargeName, chargeClass: null });
+    console.log('Found CURRENT charge (fallback):', fullCode, chargeName);
   }
   
   console.log('Total screening sheet charges found:', charges.length, charges.map(c => c.code).join(', ') || 'none');
