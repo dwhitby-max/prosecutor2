@@ -311,14 +311,17 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
   }
   
   const afterOffense = first3Pages.slice(offenseIndex);
-  const endMatch = afterOffense.search(/\n\s*(defendant|criminal\s*history|narrative|ncic|victim|witness|evidence|officer)/i);
-  const offenseSection = endMatch > 0 ? afterOffense.slice(0, endMatch) : afterOffense.slice(0, 2000);
+  
+  const headerEndMatch = afterOffense.search(/\(example:\s*MB\s*\)/i);
+  const startAfterHeader = headerEndMatch > 0 ? headerEndMatch + 15 : 0;
+  
+  const endMatch = afterOffense.search(/mark\s*the\s*box/i);
+  const offenseSection = afterOffense.slice(startAfterHeader, endMatch > 0 ? endMatch : startAfterHeader + 1500);
   
   console.log('[extractCharges] Found Offense Information section, length:', offenseSection.length);
-  console.log('[extractCharges] Section preview:', offenseSection.slice(0, 500).replace(/\n/g, ' | '));
+  console.log('[extractCharges] Section preview:', offenseSection.slice(0, 400).replace(/\n/g, ' | '));
   
   const codePattern = /(\d{1,3}[A-Za-z]?)[-–](\d{1,4}[A-Za-z]?)[-–](\d+(?:\.\d+)?(?:\([^)]*\))?)/g;
-  const classPattern = /\b(MA|MB|F1|F2|F3)\b/g;
   
   let codeMatch;
   while ((codeMatch = codePattern.exec(offenseSection)) !== null) {
@@ -327,13 +330,18 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
     
     if (seenCodes.has(normalizedCode)) continue;
     
-    const contextStart = Math.max(0, codeMatch.index - 10);
-    const contextEnd = Math.min(offenseSection.length, codeMatch.index + codeMatch[0].length + 100);
-    const context = offenseSection.slice(contextStart, contextEnd);
+    const beforeCode = offenseSection.slice(Math.max(0, codeMatch.index - 15), codeMatch.index);
+    if (/example\s*:?\s*$/i.test(beforeCode)) {
+      console.log('[extractCharges] Skipping example code:', fullCode);
+      continue;
+    }
     
-    const classMatch = context.match(/\b(MA|MB|F1|F2|F3)\b/);
+    const contextEnd = Math.min(offenseSection.length, codeMatch.index + codeMatch[0].length + 100);
+    const afterCode = offenseSection.slice(codeMatch.index + codeMatch[0].length, contextEnd);
+    
+    const classMatch = afterCode.match(/\b(MA|MB|F1|F2|F3)\b/);
     if (!classMatch) {
-      console.log('[extractCharges] Code found but no class nearby:', fullCode);
+      console.log('[extractCharges] Code found but no class after it:', fullCode);
       continue;
     }
     
