@@ -315,36 +315,38 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
   const offenseSection = endMatch > 0 ? afterOffense.slice(0, endMatch) : afterOffense.slice(0, 2000);
   
   console.log('[extractCharges] Found Offense Information section, length:', offenseSection.length);
+  console.log('[extractCharges] Section preview:', offenseSection.slice(0, 500).replace(/\n/g, ' | '));
   
-  const lines = offenseSection.split('\n');
+  const codePattern = /(\d{1,3}[A-Za-z]?)[-–](\d{1,4}[A-Za-z]?)[-–](\d+(?:\.\d+)?(?:\([^)]*\))?)/g;
+  const classPattern = /\b(MA|MB|F1|F2|F3)\b/g;
   
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-    if (!trimmedLine) continue;
-    
-    const classMatch = trimmedLine.match(/\b(MA|MB|F1|F2|F3)\s*$/);
-    if (!classMatch) continue;
-    
-    const chargeClass = classMatch[1];
-    
-    const codeMatch = trimmedLine.match(/^(\d{1,3}[A-Za-z]?[-–]\d{1,4}[A-Za-z]?[-–]\d+(?:\.\d+)?(?:\([^)]*\))?)/);
-    if (!codeMatch) continue;
-    
-    const code = codeMatch[1].replace(/–/g, '-');
-    const normalizedCode = code.toUpperCase();
+  let codeMatch;
+  while ((codeMatch = codePattern.exec(offenseSection)) !== null) {
+    const fullCode = `${codeMatch[1]}-${codeMatch[2]}-${codeMatch[3]}`.replace(/–/g, '-');
+    const normalizedCode = fullCode.toUpperCase();
     
     if (seenCodes.has(normalizedCode)) continue;
-    seenCodes.add(normalizedCode);
     
-    const middleText = trimmedLine.slice(codeMatch[0].length, trimmedLine.length - classMatch[0].length).trim();
-    const chargeName = middleText || lookupChargeName(code);
+    const contextStart = Math.max(0, codeMatch.index - 10);
+    const contextEnd = Math.min(offenseSection.length, codeMatch.index + codeMatch[0].length + 100);
+    const context = offenseSection.slice(contextStart, contextEnd);
+    
+    const classMatch = context.match(/\b(MA|MB|F1|F2|F3)\b/);
+    if (!classMatch) {
+      console.log('[extractCharges] Code found but no class nearby:', fullCode);
+      continue;
+    }
+    
+    seenCodes.add(normalizedCode);
+    const chargeClass = classMatch[1];
+    const chargeName = lookupChargeName(fullCode);
     
     charges.push({ 
-      code, 
+      code: fullCode, 
       chargeName, 
       chargeClass: classMap[chargeClass] || chargeClass 
     });
-    console.log('[extractCharges] Found charge:', code, chargeName, chargeClass);
+    console.log('[extractCharges] Found charge:', fullCode, chargeName, chargeClass);
   }
   
   console.log('[extractCharges] Total charges found:', charges.length, charges.map(c => c.code).join(', ') || 'none');
