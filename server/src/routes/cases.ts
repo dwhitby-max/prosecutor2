@@ -312,8 +312,11 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
   
   const afterOffense = first3Pages.slice(offenseIndex);
   
-  const headerEndMatch = afterOffense.search(/\(example:\s*MB\s*\)/i);
-  const startAfterHeader = headerEndMatch > 0 ? headerEndMatch + 15 : 0;
+  const headerEndMatch = afterOffense.match(/CLASS\s*\(example:\s*MB\s*\)/i);
+  let startAfterHeader = 0;
+  if (headerEndMatch && headerEndMatch.index !== undefined) {
+    startAfterHeader = headerEndMatch.index + headerEndMatch[0].length;
+  }
   
   const endMatch = afterOffense.search(/mark\s*the\s*box/i);
   const offenseSection = afterOffense.slice(startAfterHeader, endMatch > 0 ? endMatch : startAfterHeader + 1500);
@@ -333,6 +336,13 @@ function extractChargesFromScreeningSheet(text: string): ExtractedCharge[] {
     const beforeCode = offenseSection.slice(Math.max(0, codeMatch.index - 15), codeMatch.index);
     if (/example\s*:?\s*$/i.test(beforeCode)) {
       console.log('[extractCharges] Skipping example code:', fullCode);
+      continue;
+    }
+    
+    const titleNum = parseInt(codeMatch[1].replace(/[A-Za-z]/g, ''), 10);
+    const validTitles = [7, 9, 10, 13, 17, 24, 26, 31, 32, 34, 41, 53, 58, 59, 62, 63, 64, 72, 76, 77, 78];
+    if (!validTitles.includes(titleNum)) {
+      console.log('[extractCharges] Skipping invalid title:', fullCode, 'title:', titleNum);
       continue;
     }
     
